@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // switch to "postgresql" or "mysql" in production if needed
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int             @id @default(autoincrement())
+  firstName            String
+  lastName             String
+  otherName            String?
+  email                String          @unique
+  password             String
+  phone                String
+  address              String?
+  dob                  DateTime
+  accountType          AccountType?    // ✅ Use the enum instead of plain String
+  securityQuestion     String?
+  securityAnswer       String?
+  role                 Role            @default(CUSTOMER)
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  // ✅ Relations
+  accounts             Account[]
+  sentTransactions     Transaction[]   @relation("SentTransactions")
+  receivedTransactions Transaction[]   @relation("ReceivedTransactions")
+}
+
+model Account {
+  id            Int            @id @default(autoincrement())
+  type          AccountType
+  accountNumber String         @unique
+  balance       Float          @default(0)
+  createdAt     DateTime       @default(now())
+
+  user          User           @relation(fields: [userId], references: [id])
+  userId        Int
+
+  transactions  Transaction[]
+}
+
+model Transaction {
+  id          Int              @id @default(autoincrement())
+  amount      Float
+  type        TransactionType
+  timestamp   DateTime         @default(now())
+
+  account     Account          @relation(fields: [accountId], references: [id])
+  accountId   Int
+
+  // ✅ Sender/Receiver relations for transfers
+  sender      User?            @relation("SentTransactions", fields: [senderId], references: [id])
+  senderId    Int?
+  receiver    User?            @relation("ReceivedTransactions", fields: [receiverId], references: [id])
+  receiverId  Int?
+}
+
+enum Role {
+  ADMIN
+  CUSTOMER
+}
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+  BUSINESS
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  TRANSFER
+}
