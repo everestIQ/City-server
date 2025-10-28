@@ -24,6 +24,8 @@ model User {
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
+  suspended            Boolean       @default(false)
+
   // ✅ Relations
   accounts             Account[]
   sentTransactions     Transaction[]   @relation("SentTransactions")
@@ -48,6 +50,8 @@ model Transaction {
   amount      Float
   type        TransactionType
   timestamp   DateTime         @default(now())
+  description String?
+
 
   account     Account          @relation(fields: [accountId], references: [id])
   accountId   Int
@@ -68,6 +72,7 @@ enum AccountType {
   SAVINGS
   CURRENT
   BUSINESS
+  CHECKING
 }
 
 enum TransactionType {

@@ -145,6 +145,8 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
       },
     });
 
+    
+
     // Auto-update balances
     if (type === "DEPOSIT" && status === "SUCCESS") {
       await prisma.account.update({
@@ -225,5 +227,31 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
     res.status(500).json({ message: "Failed to credit account" });
   }
 });
+
+// Add funds
+router.post("/fund", async (req, res) => {
+  const { accountId, amount } = req.body;
+  const acc = await prisma.account.update({
+    where: { id: accountId },
+    data: { balance: { increment: amount } },
+  });
+  res.json({ message: `✅ Funded $${amount} to account ${acc.accountNumber}` });
+});
+
+// Suspend/reactivate user
+router.patch("/users/:id/suspend", async (req, res) => {
+  const { id } = req.params;
+  const { suspend } = req.body;
+  const user = await prisma.user.update({
+    where: { id: parseInt(id) },
+    data: { suspended: suspend },
+  });
+  res.json({
+    message: suspend
+      ? `🚫 User ${user.email} suspended.`
+      : `✅ User ${user.email} reactivated.`,
+  });
+});
+
 
 export default router;

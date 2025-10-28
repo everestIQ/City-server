@@ -62,7 +62,6 @@ router.post("/deposit", authMiddleware, async (req, res) => {
 
   await prisma.transaction.create({
     data: {
-      userId: req.user.id,
       accountId: account.id,
       type: "CREDIT", // ✅ unified
       amount,
@@ -91,7 +90,6 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
 
   await prisma.transaction.create({
     data: {
-      userId: req.user.id,
       accountId: account.id,
       type: "DEBIT", // ✅ unified
       amount,
@@ -102,11 +100,25 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
   res.json({ message: "Withdrawal successful", balance: updated.balance });
 });
 
-// ✅ Transfer
+// ✅ Transfer (Supports Local & International, external banks included)
 router.post("/transfer", authMiddleware, async (req, res) => {
-  const { recipientEmail, amount, description } = req.body;
-  if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+  const {
+    transferType,
+    amount,
+    bankName,
+    accountNumber,
+    recipientEmail,
+    recipientName,
+    iban,
+    swiftCode,
+    currency = "USD",
+  } = req.body;
 
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: "Invalid amount" });
+  }
+
+  // ✅ Find sender account
   const sender = await prisma.user.findUnique({
     where: { id: req.user.id },
     include: { accounts: true },
@@ -116,56 +128,33 @@ router.post("/transfer", authMiddleware, async (req, res) => {
   const senderAccount = sender.accounts[0];
   if (!senderAccount) return res.status(404).json({ error: "Sender account not found" });
 
-  if (senderAccount.balance < amount)
+  if (senderAccount.balance < amount) {
     return res.status(400).json({ error: "Insufficient funds" });
+  }
 
-  const recipient = await prisma.user.findUnique({
-    where: { email: recipientEmail },
-    include: { accounts: true },
-  });
-  if (!recipient) return res.status(404).json({ error: "Recipient not found" });
-
-  const recipientAccount = recipient.accounts[0];
-  if (!recipientAccount) return res.status(404).json({ error: "Recipient account not found" });
-
-  // ✅ Transaction
-  await prisma.$transaction(async (tx) => {
-    await tx.account.update({
-      where: { id: senderAccount.id },
-      data: { balance: { decrement: amount } },
-    });
-
-    await tx.account.update({
-      where: { id: recipientAccount.id },
-      data: { balance: { increment: amount } },
-    });
-
-    await tx.transaction.create({
-      data: {
-        userId: sender.id,
-        accountId: senderAccount.id,
-        type: "TRANSFER",
-        amount,
-        description: description || `Transfer to ${recipient.email}`,
-        senderId: sender.id,
-        receiverId: recipient.id,
-      },
-    });
-
-    await tx.transaction.create({
-      data: {
-        userId: recipient.id,
-        accountId: recipientAccount.id,
-        type: "TRANSFER",
-        amount,
-        description: description || `Transfer from ${sender.email}`,
-        senderId: sender.id,
-        receiverId: recipient.id,
-      },
-    });
+  // ✅ Deduct from sender (ALWAYS allowed, no recipient lookup required)
+  const updatedSenderAccount = await prisma.account.update({
+    where: { id: senderAccount.id },
+    data: { balance: { decrement: amount } },
   });
 
-  res.json({ message: "Transfer successful" });
+  // ✅ Log transaction as EXTERNAL TRANSFER
+  await prisma.transaction.create({
+    data: {
+      accountId: senderAccount.id,
+      type: "TRANSFER",
+      amount,
+      description:
+        transferType === "INTL"
+          ? `International Transfer to ${recipientName} (${bankName}) - SWIFT: ${swiftCode}, IBAN: ${iban}, Currency: ${currency}`
+          : `Local Transfer to Account ${accountNumber} (${bankName})`,
+    },
+  });
+
+  return res.json({
+    message: "✅ Transfer successful",
+    remainingBalance: updatedSenderAccount.balance,
+  });
 });
 
 export default router;
