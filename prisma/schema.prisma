@@ -52,16 +52,18 @@ model Transaction {
   timestamp   DateTime         @default(now())
   description String?
 
-
   account     Account          @relation(fields: [accountId], references: [id])
   accountId   Int
+  
+  referenceId  String   @unique   // 👈 CHANGE: add ?
+  createdAt    DateTime @default(now())
 
-  // ✅ Sender/Receiver relations for transfers
   sender      User?            @relation("SentTransactions", fields: [senderId], references: [id])
   senderId    Int?
   receiver    User?            @relation("ReceivedTransactions", fields: [receiverId], references: [id])
   receiverId  Int?
 }
+
 
 enum Role {
   ADMIN
