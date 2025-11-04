@@ -2,9 +2,15 @@ import express from "express";
 import { PrismaClient } from "@prisma/client";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import crypto from "crypto"; // ✅ Add this
 
 const prisma = new PrismaClient();
 const router = express.Router();
+
+// Utility to generate transaction reference
+function generateReferenceId() {
+  return "TRX-" + crypto.randomBytes(3).toString("hex").toUpperCase();
+}
 
 // ✅ Get user dashboard
 router.get("/", authMiddleware, async (req, res) => {
@@ -61,27 +67,33 @@ router.post("/deposit", authMiddleware, async (req, res) => {
     data: { balance: { increment: amount } },
   });
 
+  const referenceId = generateReferenceId();
+
   const tx = await prisma.transaction.create({
     data: {
       accountId: account.id,
       type: "CREDIT",
       amount,
       description: description || "Deposit",
+      referenceId, // ✅ ADDED
     },
   });
 
-  // ✅ Notify Customer
   await sendEmail(
     req.user.email,
     "Deposit Receipt - First City Bank",
-    `Hello ${req.user.firstName},\n\nYour deposit of $${amount.toFixed(2)} was successful.\n\nNew Balance: $${updated.balance.toFixed(2)}\nTransaction ID: ${tx.id}\nDate: ${new Date().toLocaleString()}`
+    `Hello ${req.user.firstName},
+
+Your deposit of $${amount.toFixed(2)} was successful.
+
+Reference: ${referenceId}
+New Balance: $${updated.balance.toFixed(2)}
+Date: ${new Date().toLocaleString()}`
   );
 
   res.json({ message: "Deposit successful", balance: updated.balance });
 });
 
-
-// ✅ Withdraw
 // ✅ Withdraw
 router.post("/withdraw", authMiddleware, async (req, res) => {
   const { amount, description } = req.body;
@@ -98,26 +110,34 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     data: { balance: { decrement: amount } },
   });
 
+  const referenceId = generateReferenceId();
+
   const tx = await prisma.transaction.create({
     data: {
       accountId: account.id,
       type: "DEBIT",
       amount,
       description: description || "Withdrawal",
+      referenceId, // ✅ ADDED
     },
   });
 
-  // ✅ Notify Customer
   await sendEmail(
     req.user.email,
     "Withdrawal Notification - First City Bank",
-    `Hello ${req.user.firstName},\n\nYou withdrew $${amount.toFixed(2)}.\n\nRemaining Balance: $${updated.balance.toFixed(2)}\nTransaction ID: ${tx.id}\nDate: ${new Date().toLocaleString()}`
+    `Hello ${req.user.firstName},
+
+You withdrew $${amount.toFixed(2)}.
+
+Reference: ${referenceId}
+Remaining Balance: $${updated.balance.toFixed(2)}
+Date: ${new Date().toLocaleString()}`
   );
 
   res.json({ message: "Withdrawal successful", balance: updated.balance });
 });
 
-// ✅ Transfer (Supports Local & International, external banks included)
+// ✅ Transfer
 router.post("/transfer", authMiddleware, async (req, res) => {
   const {
     transferType,
@@ -131,11 +151,9 @@ router.post("/transfer", authMiddleware, async (req, res) => {
     currency = "USD",
   } = req.body;
 
-  if (!amount || amount <= 0) {
+  if (!amount || amount <= 0)
     return res.status(400).json({ error: "Invalid amount" });
-  }
 
-  // ✅ Find sender account
   const sender = await prisma.user.findUnique({
     where: { id: req.user.id },
     include: { accounts: true },
@@ -145,22 +163,22 @@ router.post("/transfer", authMiddleware, async (req, res) => {
   const senderAccount = sender.accounts[0];
   if (!senderAccount) return res.status(404).json({ error: "Sender account not found" });
 
-  if (senderAccount.balance < amount) {
+  if (senderAccount.balance < amount)
     return res.status(400).json({ error: "Insufficient funds" });
-  }
 
-  // ✅ Deduct from sender
   const updatedSenderAccount = await prisma.account.update({
     where: { id: senderAccount.id },
     data: { balance: { decrement: amount } },
   });
 
-  // ✅ Record transfer transaction
+  const referenceId = generateReferenceId(); // ✅
+
   await prisma.transaction.create({
     data: {
       accountId: senderAccount.id,
       type: "TRANSFER",
       amount,
+      referenceId, // ✅ ADDED
       description:
         transferType === "INTL"
           ? `International Transfer to ${recipientName} (${bankName}) - SWIFT: ${swiftCode}, IBAN: ${iban}, Currency: ${currency}`
@@ -168,63 +186,35 @@ router.post("/transfer", authMiddleware, async (req, res) => {
     },
   });
 
-  // ✅ Notify sender
- const senderRemaining = updatedSenderAccount.balance;
-
-await sendEmail(
-  sender.email,
-  "Transfer Receipt — First City Bank",
-  `Hello ${sender.firstName},
-
-Your transfer of ${currency} ${amount} was successfully processed.
-
-Details:
-- Transfer Type: ${transferType}
-- Bank: ${bankName || "N/A"}
-- Destination Account: ${transferType === "LOCAL" ? accountNumber : "N/A"}
-- Time: ${new Date().toLocaleString()}
-- Remaining Balance: ${senderRemaining.toFixed(2)}
-
-Thank you for banking with First City Bank.`,
-  {
-    // optional HTML receipt (simple example)
-    html: `
-      <div style="font-family: Inter, system-ui, Arial; max-width:600px;">
-        <h2 style="color:#0d6efd">First City Bank — Transfer Receipt</h2>
-        <p>Hello ${sender.firstName},</p>
-        <p>Your transfer of <strong>${currency} ${amount}</strong> was processed successfully.</p>
-        <ul>
-          <li><strong>Transfer Type:</strong> ${transferType}</li>
-          <li><strong>Bank:</strong> ${bankName || "N/A"}</li>
-          <li><strong>Destination:</strong> ${transferType === "LOCAL" ? accountNumber : "N/A"}</li>
-          <li><strong>Time:</strong> ${new Date().toLocaleString()}</li>
-          <li><strong>Remaining Balance:</strong> ${senderRemaining.toFixed(2)}</li>
-        </ul>
-        <p style="color:#6c757d; font-size:0.9rem;">If you didn't authorize this transfer, contact support immediately.</p>
-      </div>
-    `,
-  }
-);
-  // ✅ Notify recipient ONLY if `recipientEmail` exists (Local transfers only)
-  if (recipientEmail) {
   await sendEmail(
-    recipientEmail,
-    "You received a payment — First City Bank",
-    `Hello ${recipientName || "Customer"},
+    sender.email,
+    "Transfer Receipt — First City Bank",
+    `Hello ${sender.firstName},
 
-You have received ${currency} ${amount} from ${sender.firstName} ${sender.lastName}.
+Your transfer of ${currency} ${amount} was processed.
 
-Time: ${new Date().toLocaleString()}
-
-Thank you.`
+Reference: ${referenceId}
+Remaining Balance: ${updatedSenderAccount.balance.toFixed(2)}
+Date: ${new Date().toLocaleString()}`
   );
-}
+
+  if (recipientEmail) {
+    await sendEmail(
+      recipientEmail,
+      "You received a payment — First City Bank",
+      `Hello ${recipientName || "Customer"},
+
+You have received ${currency} ${amount}.
+Reference: ${referenceId}
+Date: ${new Date().toLocaleString()}`
+    );
+  }
 
   return res.json({
     message: "✅ Transfer successful",
     remainingBalance: updatedSenderAccount.balance,
+    referenceId,
   });
 });
-
 
 export default router;
