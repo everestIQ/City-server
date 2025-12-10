@@ -22,6 +22,8 @@ const allowedOrigins = [
   "https://city-front-seven.vercel.app"
 ];
 
+app.options("*", cors());
+
 app.use(
   cors({
     origin: function (origin, callback) {
