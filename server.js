@@ -18,7 +18,8 @@ const allowedOrigins = [
   "http://localhost:5173",
   "https://firstcityfinance.com",
   "https://www.firstcityfinance.com",
-  "https://city-server-6geb.onrender.com" // <-- Render backend domain
+  "https://city-server-6geb.onrender.com", // <-- Render backend domain
+  "https://city-front-seven.vercel.app"
 ];
 
 app.use(
