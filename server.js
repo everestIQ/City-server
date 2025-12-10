@@ -19,7 +19,7 @@ const allowedOrigins = [
   "https://firstcityfinance.com",
   "https://www.firstcityfinance.com",
   "https://city-server-6geb.onrender.com", // <-- Render backend domain
-  "https://city-front-seven.vercel.app"
+  "https://city-front.onrender.com"
 ];
 
 app.options("*", cors());
