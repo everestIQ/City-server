@@ -16,30 +16,23 @@ app.use(express.json());
 // ✅ Allow frontend + backend domains
 const allowedOrigins = [
   "http://localhost:5173",
+  "https://city-front.onrender.com",
   "https://firstcityfinance.com",
-  "https://www.firstcityfinance.com",
-  "https://city-server-6geb.onrender.com", // <-- Render backend domain
-  "https://city-front.onrender.com"
+  "https://www.firstcityfinance.com"
 ];
-
-app.options("*", cors());
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (e.g. mobile apps, curl)
       if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      } else {
-        console.log("❌ Blocked by CORS:", origin);
-        return callback(new Error("Not allowed by CORS"));
-      }
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      console.log("❌ Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
 );
+
 
 // ------------------ ROUTES ------------------
 app.use("/auth", authRoutes);
