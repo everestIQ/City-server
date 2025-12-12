@@ -33,6 +33,10 @@ app.use(
   })
 );
 
+app.get("/", (req, res) => {
+  res.json({ message: "Backend is running 🚀" });
+});
+
 
 // ------------------ ROUTES ------------------
 app.use("/auth", authRoutes);
