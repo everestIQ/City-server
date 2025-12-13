@@ -15,28 +15,22 @@ app.use(express.json());
 
 // ✅ Allow frontend + backend domains
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://city-front.onrender.com",
-  "https://firstcityfinance.com",
+  "http://localhost:5173",               // local dev
+  "https://city-front.onrender.com",     // Render front
+  "https://firstcityfinance.com",        // Custom domain
   "https://www.firstcityfinance.com"
 ];
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      console.log("❌ Blocked by CORS:", origin);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  })
-);
+// Simplified CORS for production + dev
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true,  // Allow cookies and auth headers
+}));
 
+// ✅ Root route for testing backend
 app.get("/", (req, res) => {
   res.json({ message: "Backend is running 🚀" });
 });
-
 
 // ------------------ ROUTES ------------------
 app.use("/auth", authRoutes);
@@ -47,7 +41,7 @@ app.use("/admin", adminRoutes);
 // ✅ Test email route
 app.get("/test-email", async (req, res) => {
   const result = await sendEmail(
-    "your-email@gmail.com",
+    process.env.EMAIL_FROM, // Make sure EMAIL_FROM is set
     "✅ Test Email from First City Bank",
     "If you received this, your email system is working!"
   );
