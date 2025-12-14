@@ -11,11 +11,26 @@ import { sendEmail } from "./utils/sendEmail.js";
 dotenv.config();
 const app = express();
 
-/* ✅ BODY PARSERS (CRITICAL) */
+/* =====================================================
+   ✅ GLOBAL REQUEST LOGGER (DEBUG – SAFE)
+   Logs EVERY incoming request
+===================================================== */
+app.use((req, res, next) => {
+  console.log(
+    `➡️ ${new Date().toISOString()} | ${req.method} ${req.originalUrl}`
+  );
+  next();
+});
+
+/* =====================================================
+   ✅ BODY PARSERS (CRITICAL)
+===================================================== */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-/* ✅ CORS */
+/* =====================================================
+   ✅ CORS
+===================================================== */
 const allowedOrigins = [
   "http://localhost:5173",
   "https://city-front.onrender.com",
@@ -30,7 +45,9 @@ app.use(
   })
 );
 
-/* ✅ HARD TEST ROUTES */
+/* =====================================================
+   ✅ HARD TEST ROUTES
+===================================================== */
 app.get("/", (req, res) => {
   res.json({ message: "Backend is running 🚀" });
 });
@@ -39,13 +56,17 @@ app.get("/health", (req, res) => {
   res.send("OK");
 });
 
-/* ------------------ ROUTES ------------------ */
+/* =====================================================
+   ROUTES
+===================================================== */
 app.use("/auth", authRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/transactions", transactionRoutes);
 app.use("/admin", adminRoutes);
 
-/* ------------------ EMAIL TEST ------------------ */
+/* =====================================================
+   EMAIL TEST
+===================================================== */
 app.get("/test-email", async (req, res) => {
   const result = await sendEmail(
     process.env.EMAIL_FROM,
@@ -63,8 +84,11 @@ app.get("/test-email", async (req, res) => {
   }
 });
 
-/* ------------------ START SERVER ------------------ */
+/* =====================================================
+   START SERVER
+===================================================== */
 const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
