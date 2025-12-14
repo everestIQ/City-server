@@ -15,6 +15,12 @@ function generateAccountNumber() {
 
 // === REGISTER ===
 router.post("/register", async (req, res) => {
+  // 🔴 TEMP DEBUG LOG (ADD THIS)
+  console.log("🟢 REGISTER HIT");
+  console.log("Method:", req.method);
+  console.log("URL:", req.originalUrl);
+  console.log("Body:", req.body);
+
   try {
     let {
       firstName,
@@ -29,6 +35,7 @@ router.post("/register", async (req, res) => {
       securityAnswer,
       password,
     } = req.body;
+
 
     // ---------- Normalize empty strings ----------
     otherName = otherName || null;
