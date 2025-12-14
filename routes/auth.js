@@ -134,14 +134,31 @@ router.post("/login", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { accounts: true }, // ✅ include accounts
+      include: { accounts: true },
     });
-    console.log("Login attempt:", email, "Found user:", user);
 
-    if (!user) return res.status(401).json({ error: "Invalid credentials" });
+    if (!user) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
 
     const isValid = await bcrypt.compare(password, user.password);
-    if (!isValid) return res.status(401).json({ error: "Invalid credentials" });
+    if (!isValid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // ✅ ENSURE ACCOUNT EXISTS
+    let account = user.accounts[0] || null;
+
+    if (!account) {
+      account = await prisma.account.create({
+        data: {
+          accountNumber: generateAccountNumber(),
+          userId: user.id,
+          balance: 0,
+          type: user.accountType || "SAVINGS",
+        },
+      });
+    }
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
@@ -149,29 +166,27 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    const account = user.accounts[0] || null;
-
     res.json({
       message: "Login successful",
       token,
       user: {
         id: user.id,
-        name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`, // ✅ full name
+        name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`,
         email: user.email,
         phone: user.phone,
         role: user.role,
       },
-      account: account
-        ? {
-            accountNumber: account.accountNumber,
-            balance: account.balance,
-          }
-        : null,
+      account: {
+        accountNumber: account.accountNumber,
+        balance: account.balance,
+        type: account.type,
+      },
     });
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Server error during login" });
   }
 });
+
 
 export default router;
