@@ -16,7 +16,7 @@ function generateAccountNumber() {
 // === REGISTER ===
 router.post("/register", async (req, res) => {
   try {
-    const {
+    let {
       firstName,
       lastName,
       otherName,
@@ -30,26 +30,44 @@ router.post("/register", async (req, res) => {
       password,
     } = req.body;
 
-    // Basic validation
-    if (!firstName || !lastName || !email || !password || !phone || !dob) {
-      return res.status(400).json({ error: "Missing required fields" });
+    // ---------- Normalize empty strings ----------
+    otherName = otherName || null;
+    address = address || null;
+    securityQuestion = securityQuestion || "What is your favorite color?";
+    securityAnswer = securityAnswer || "blue";
+
+    // ---------- Basic validation ----------
+    if (!firstName || !lastName || !email || !password || !phone) {
+      return res.status(400).json({
+        error: "firstName, lastName, email, phone and password are required",
+      });
     }
 
-    // Validate accountType against enum
+    // ---------- DOB validation ----------
+    const parsedDob = dob ? new Date(dob) : null;
+    if (!parsedDob || isNaN(parsedDob.getTime())) {
+      return res.status(400).json({ error: "Invalid or missing date of birth" });
+    }
+
+    // ---------- Account type validation ----------
     const validTypes = ["SAVINGS", "CURRENT", "BUSINESS"];
     if (!validTypes.includes(accountType)) {
-      return res.status(400).json({ error: "Invalid account type" });
+      return res.status(400).json({
+        error: `Invalid account type. Must be one of ${validTypes.join(", ")}`,
+      });
     }
 
-    // Check if user already exists
+    // ---------- Check existing user ----------
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
-      return res.status(400).json({ error: "User with this email already exists" });
+      return res
+        .status(400)
+        .json({ error: "User with this email already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create User
+    // ---------- Create user ----------
     const user = await prisma.user.create({
       data: {
         firstName,
@@ -58,7 +76,7 @@ router.post("/register", async (req, res) => {
         email,
         phone,
         address,
-        dob: new Date(dob),
+        dob: parsedDob,
         securityQuestion,
         securityAnswer,
         password: hashedPassword,
@@ -66,22 +84,23 @@ router.post("/register", async (req, res) => {
       },
     });
 
-    // Generate and create account
-    const accountNumber = generateAccountNumber();
+    // ---------- Create account ----------
     const account = await prisma.account.create({
       data: {
-        accountNumber,
+        accountNumber: generateAccountNumber(),
         userId: user.id,
-        balance: 0, // default starting balance
-        type: accountType, // ✅ now stored correctly
+        balance: 0,
+        type: accountType,
       },
     });
 
-    res.json({
+    res.status(201).json({
       message: "User registered successfully",
       user: {
         id: user.id,
-        name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`,
+        name: `${user.firstName} ${
+          user.otherName ? user.otherName + " " : ""
+        }${user.lastName}`,
         email: user.email,
         phone: user.phone,
         role: user.role,
@@ -94,9 +113,10 @@ router.post("/register", async (req, res) => {
     });
   } catch (error) {
     console.error("Registration error:", error);
-    res.status(500).json({ error: "Something went wrong" });
+    res.status(500).json({ error: "Server error during registration" });
   }
 });
+
 
 
 // === LOGIN ===

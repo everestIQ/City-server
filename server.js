@@ -11,54 +11,60 @@ import { sendEmail } from "./utils/sendEmail.js";
 dotenv.config();
 const app = express();
 
+/* ✅ BODY PARSERS (CRITICAL) */
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// ✅ Allow frontend + backend domains
+/* ✅ CORS */
 const allowedOrigins = [
-  "http://localhost:5173",               // local dev
-  "https://city-front.onrender.com",     // Render front
-  "https://firstcityfinance.com",        // Custom domain
-  "https://www.firstcityfinance.com"
+  "http://localhost:5173",
+  "https://city-front.onrender.com",
+  "https://firstcityfinance.com",
+  "https://www.firstcityfinance.com",
 ];
 
-// Simplified CORS for production + dev
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,  // Allow cookies and auth headers
-}));
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+  })
+);
 
-// ✅ Root route for testing backend
+/* ✅ HARD TEST ROUTES */
 app.get("/", (req, res) => {
   res.json({ message: "Backend is running 🚀" });
 });
 
-// ------------------ ROUTES ------------------
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
+
+/* ------------------ ROUTES ------------------ */
 app.use("/auth", authRoutes);
 app.use("/dashboard", dashboardRoutes);
 app.use("/transactions", transactionRoutes);
 app.use("/admin", adminRoutes);
 
-// ✅ Test email route
+/* ------------------ EMAIL TEST ------------------ */
 app.get("/test-email", async (req, res) => {
   const result = await sendEmail(
-    process.env.EMAIL_FROM, // Make sure EMAIL_FROM is set
+    process.env.EMAIL_FROM,
     "✅ Test Email from First City Bank",
     "If you received this, your email system is working!"
   );
 
   if (result.ok) {
-    return res.json({ message: "Email sent successfully" });
+    res.json({ message: "Email sent successfully" });
   } else {
-    return res.status(500).json({
+    res.status(500).json({
       error: "Email failed",
       details: result.error,
     });
   }
 });
 
-// ------------------ START SERVER ------------------
+/* ------------------ START SERVER ------------------ */
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
