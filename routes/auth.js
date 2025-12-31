@@ -118,9 +118,15 @@ router.post("/register", async (req, res) => {
         type: account.type,
       },
     });
-  } catch (error) {
-    console.error("Registration error:", error);
-    res.status(500).json({ error: "Server error during registration" });
+  }  catch (error) {
+  console.error("❌ REGISTRATION ERROR FULL:", error);
+  console.error("❌ ERROR MESSAGE:", error.message);
+  console.error("❌ ERROR STACK:", error.stack);
+
+  return res.status(500).json({
+    message: "Registration failed",
+    error: error.message,
+  });
   }
 });
 
