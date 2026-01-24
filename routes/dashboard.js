@@ -2,7 +2,7 @@ import express from "express";
 import { PrismaClient } from "@prisma/client";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { sendEmail } from "../utils/sendEmail.js";
-import crypto from "crypto"; // ✅ Add this
+import crypto from "crypto";
 
 const prisma = new PrismaClient();
 const router = express.Router();
@@ -12,7 +12,9 @@ function generateReferenceId() {
   return "TRX-" + crypto.randomBytes(3).toString("hex").toUpperCase();
 }
 
-// ✅ Get user dashboard
+// =======================
+// ✅ GET DASHBOARD
+// =======================
 router.get("/", authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -32,6 +34,18 @@ router.get("/", authMiddleware, async (req, res) => {
 
     const account = user.accounts[0] || null;
 
+    // 🔍 DEBUG (can remove later)
+    console.log("DASHBOARD ACCOUNT:", {
+      id: account?.id,
+      suspended: account?.suspended,
+      suspensionMessage: account?.suspensionMessage,
+    });
+
+    console.log("DASHBOARD USER:", {
+      id: user.id,
+      suspended: user.suspended,
+    });
+
     res.json({
       user: {
         id: user.id,
@@ -42,8 +56,11 @@ router.get("/", authMiddleware, async (req, res) => {
       },
       account: account
         ? {
+            id: account.id,
             accountNumber: account.accountNumber,
             balance: account.balance,
+            suspended: account.suspended, // ✅ now meaningful
+            suspensionMessage: account.suspensionMessage,
           }
         : null,
       transactions: account ? account.transactions : [],
@@ -54,12 +71,17 @@ router.get("/", authMiddleware, async (req, res) => {
   }
 });
 
-// ✅ Deposit
+// =======================
+// ✅ DEPOSIT (ALLOWED EVEN IF SUSPENDED)
+// =======================
 router.post("/deposit", authMiddleware, async (req, res) => {
   const { amount, description } = req.body;
   if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
-  const account = await prisma.account.findFirst({ where: { userId: req.user.id } });
+  const account = await prisma.account.findFirst({
+    where: { userId: req.user.id },
+  });
+
   if (!account) return res.status(404).json({ error: "Account not found" });
 
   const updated = await prisma.account.update({
@@ -69,13 +91,13 @@ router.post("/deposit", authMiddleware, async (req, res) => {
 
   const referenceId = generateReferenceId();
 
-  const tx = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       accountId: account.id,
       type: "CREDIT",
       amount,
       description: description || "Deposit",
-      referenceId, // ✅ ADDED
+      referenceId,
     },
   });
 
@@ -94,13 +116,28 @@ Date: ${new Date().toLocaleString()}`
   res.json({ message: "Deposit successful", balance: updated.balance });
 });
 
-// ✅ Withdraw
+// =======================
+// 🔒 WITHDRAW (BLOCK IF SUSPENDED)
+// =======================
 router.post("/withdraw", authMiddleware, async (req, res) => {
   const { amount, description } = req.body;
   if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
-  const account = await prisma.account.findFirst({ where: { userId: req.user.id } });
+  const account = await prisma.account.findFirst({
+    where: { userId: req.user.id },
+  });
+
   if (!account) return res.status(404).json({ error: "Account not found" });
+
+  // 🔒 SUSPENSION CHECK
+  if (account.suspended) {
+    return res.status(403).json({
+      error: "Account suspended",
+      message:
+        account.suspensionMessage ||
+        "Your account is suspended. Withdrawals are disabled.",
+    });
+  }
 
   if (account.balance < amount)
     return res.status(400).json({ error: "Insufficient funds" });
@@ -112,13 +149,13 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
 
   const referenceId = generateReferenceId();
 
-  const tx = await prisma.transaction.create({
+  await prisma.transaction.create({
     data: {
       accountId: account.id,
       type: "DEBIT",
       amount,
       description: description || "Withdrawal",
-      referenceId, // ✅ ADDED
+      referenceId,
     },
   });
 
@@ -137,7 +174,9 @@ Date: ${new Date().toLocaleString()}`
   res.json({ message: "Withdrawal successful", balance: updated.balance });
 });
 
-// ✅ Transfer
+// =======================
+// 🔒 TRANSFER (BLOCK IF SUSPENDED)
+// =======================
 router.post("/transfer", authMiddleware, async (req, res) => {
   const {
     transferType,
@@ -158,10 +197,22 @@ router.post("/transfer", authMiddleware, async (req, res) => {
     where: { id: req.user.id },
     include: { accounts: true },
   });
+
   if (!sender) return res.status(404).json({ error: "Sender not found" });
 
   const senderAccount = sender.accounts[0];
-  if (!senderAccount) return res.status(404).json({ error: "Sender account not found" });
+  if (!senderAccount)
+    return res.status(404).json({ error: "Sender account not found" });
+
+  // 🔒 SUSPENSION CHECK
+  if (senderAccount.suspended) {
+    return res.status(403).json({
+      error: "Account suspended",
+      message:
+        senderAccount.suspensionMessage ||
+        "Your account is suspended. Transfers are disabled.",
+    });
+  }
 
   if (senderAccount.balance < amount)
     return res.status(400).json({ error: "Insufficient funds" });
@@ -171,14 +222,14 @@ router.post("/transfer", authMiddleware, async (req, res) => {
     data: { balance: { decrement: amount } },
   });
 
-  const referenceId = generateReferenceId(); // ✅
+  const referenceId = generateReferenceId();
 
   await prisma.transaction.create({
     data: {
       accountId: senderAccount.id,
       type: "TRANSFER",
       amount,
-      referenceId, // ✅ ADDED
+      referenceId,
       description:
         transferType === "INTL"
           ? `International Transfer to ${recipientName} (${bankName}) - SWIFT: ${swiftCode}, IBAN: ${iban}, Currency: ${currency}`
@@ -210,7 +261,7 @@ Date: ${new Date().toLocaleString()}`
     );
   }
 
-  return res.json({
+  res.json({
     message: "✅ Transfer successful",
     remainingBalance: updatedSenderAccount.balance,
     referenceId,

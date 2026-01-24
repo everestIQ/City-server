@@ -172,27 +172,34 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
-    res.json({
-      message: "Login successful",
-      token,
-      user: {
-        id: user.id,
-        name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-      },
-      account: {
-        accountNumber: account.accountNumber,
-        balance: account.balance,
-        type: account.type,
-      },
-    });
+ res.json({
+  message: "Login successful",
+  token,
+  user: {
+    id: user.id,
+    name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+
+    // 🔴 NEW (does NOT affect login)
+    suspended: user.suspended,
+    suspensionReason: user.suspensionReason,
+    suspendedAt: user.suspendedAt,
+  },
+  account: {
+    accountNumber: account.accountNumber,
+    balance: account.balance,
+    type: account.type,
+  },
+});
+
   } catch (err) {
     console.error("Login error:", err);
     res.status(500).json({ error: "Server error during login" });
   }
 });
+
 
 
 export default router;

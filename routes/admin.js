@@ -73,6 +73,7 @@ router.put("/users/:id/role", authenticateAdmin, async (req, res) => {
     res.status(500).json({ error: "Failed to update role" });
   }
 });
+1
 
 // ✅ Delete user
 router.delete("/users/:id", authenticateAdmin, async (req, res) => {
@@ -238,20 +239,40 @@ router.post("/fund", async (req, res) => {
   res.json({ message: `✅ Funded $${amount} to account ${acc.accountNumber}` });
 });
 
-// Suspend/reactivate user
-router.patch("/users/:id/suspend", async (req, res) => {
-  const { id } = req.params;
-  const { suspend } = req.body;
-  const user = await prisma.user.update({
-    where: { id: parseInt(id) },
-    data: { suspended: suspend },
-  });
-  res.json({
-    message: suspend
-      ? `🚫 User ${user.email} suspended.`
-      : `✅ User ${user.email} reactivated.`,
-  });
+// ✅ Suspend / Reactivate USER ACCOUNTS (NOT USER ITSELF)
+router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { suspend, message } = req.body;
+
+    // 1️⃣ Update user status (optional but fine)
+    const user = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { suspended: suspend },
+    });
+
+    // 2️⃣ Suspend ALL accounts belonging to user
+    await prisma.account.updateMany({
+      where: { userId: parseInt(id) },
+      data: {
+        suspended: suspend,
+        suspensionMessage: suspend
+          ? message || "Your account has been suspended. Please contact support."
+          : null,
+      },
+    });
+
+    res.json({
+      message: suspend
+        ? `🚫 User & accounts suspended`
+        : `✅ User & accounts reactivated`,
+    });
+  } catch (err) {
+    console.error("Error suspending account:", err);
+    res.status(500).json({ error: "Failed to update suspension status" });
+  }
 });
+
 
 
 export default router;

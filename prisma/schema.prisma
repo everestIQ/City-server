@@ -25,6 +25,8 @@ model User {
   updatedAt            DateTime        @updatedAt
 
   suspended            Boolean       @default(false)
+  suspensionReason     String?
+  suspendedAt          DateTime?
 
   // ✅ Relations
   accounts             Account[]
@@ -43,6 +45,8 @@ model Account {
   userId        Int
 
   transactions  Transaction[]
+  suspended     Boolean        @default(false)
+  suspensionMessage String?
 }
 
 model Transaction {
