@@ -5,8 +5,15 @@ const prisma = new PrismaClient();
 async function main() {
   console.log("🌱 Seeding database...");
 
-  // Example: suspend ALL accounts for testing
-  const result = await prisma.account.updateMany({
+  const accounts = await prisma.account.findMany();
+
+  if (accounts.length === 0) {
+    console.log("⚠️ No accounts found, skipping suspension seed");
+    return;
+  }
+
+  const updated = await prisma.account.updateMany({
+    where: {},
     data: {
       suspended: true,
       suspensionMessage:
@@ -14,7 +21,7 @@ async function main() {
     },
   });
 
-  console.log(`✅ Suspended ${result.count} accounts`);
+  console.log("✅ Suspended accounts:", updated.count);
 }
 
 main()
@@ -25,4 +32,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-
