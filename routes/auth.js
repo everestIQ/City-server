@@ -1,4 +1,4 @@
-// server/routes/auth.js 
+// server/routes/auth.js
 import express from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
@@ -13,12 +13,11 @@ function generateAccountNumber() {
   return Math.floor(10000000 + Math.random() * 90000000).toString();
 }
 
-// === REGISTER ===
+/* =====================================================
+   REGISTER
+===================================================== */
 router.post("/register", async (req, res) => {
-  // 🔴 TEMP DEBUG LOG (ADD THIS)
   console.log("🟢 REGISTER HIT");
-  console.log("Method:", req.method);
-  console.log("URL:", req.originalUrl);
   console.log("Body:", req.body);
 
   try {
@@ -36,27 +35,25 @@ router.post("/register", async (req, res) => {
       password,
     } = req.body;
 
-
-    // ---------- Normalize empty strings ----------
+    // Normalize
     otherName = otherName || null;
     address = address || null;
-    securityQuestion = securityQuestion || "What is your favorite color?";
+    securityQuestion =
+      securityQuestion || "What is your favorite color?";
     securityAnswer = securityAnswer || "blue";
 
-    // ---------- Basic validation ----------
-    if (!firstName || !lastName || !email || !password || !phone) {
+    // Validation
+    if (!firstName || !lastName || !email || !phone || !password) {
       return res.status(400).json({
         error: "firstName, lastName, email, phone and password are required",
       });
     }
 
-    // ---------- DOB validation ----------
-    const parsedDob = dob ? new Date(dob) : null;
-    if (!parsedDob || isNaN(parsedDob.getTime())) {
-      return res.status(400).json({ error: "Invalid or missing date of birth" });
+    const parsedDob = new Date(dob);
+    if (!dob || isNaN(parsedDob.getTime())) {
+      return res.status(400).json({ error: "Invalid date of birth" });
     }
 
-    // ---------- Account type validation ----------
     const validTypes = ["SAVINGS", "CURRENT", "BUSINESS"];
     if (!validTypes.includes(accountType)) {
       return res.status(400).json({
@@ -64,7 +61,7 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // ---------- Check existing user ----------
+    // Check existing user
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) {
       return res
@@ -74,68 +71,74 @@ router.post("/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // ---------- Create user ----------
-    const user = await prisma.user.create({
-      data: {
-        firstName,
-        lastName,
-        otherName,
-        email,
-        phone,
-        address,
-        dob: parsedDob,
-        securityQuestion,
-        securityAnswer,
-        password: hashedPassword,
-        role: "CUSTOMER",
-      },
+    /* ===============================
+       TRANSACTION (CRITICAL FIX)
+    ================================ */
+    const result = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          firstName,
+          lastName,
+          otherName,
+          email,
+          phone,
+          address,
+          dob: parsedDob,
+          password: hashedPassword,
+          securityQuestion,
+          securityAnswer,
+          role: "CUSTOMER",
+          accountType, // ✅ store on user
+        },
+      });
+
+      const account = await tx.account.create({
+        data: {
+          accountNumber: generateAccountNumber(),
+          userId: user.id,
+          balance: 0,
+          type: accountType,
+        },
+      });
+
+      return { user, account };
     });
 
-    // ---------- Create account ----------
-    const account = await prisma.account.create({
-      data: {
-        accountNumber: generateAccountNumber(),
-        userId: user.id,
-        balance: 0,
-        type: accountType,
-      },
-    });
+    console.log("✅ USER + ACCOUNT CREATED:", result.user.id);
 
     res.status(201).json({
       message: "User registered successfully",
       user: {
-        id: user.id,
-        name: `${user.firstName} ${
-          user.otherName ? user.otherName + " " : ""
-        }${user.lastName}`,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
+        id: result.user.id,
+        name: `${result.user.firstName} ${
+          result.user.otherName ? result.user.otherName + " " : ""
+        }${result.user.lastName}`,
+        email: result.user.email,
+        phone: result.user.phone,
+        role: result.user.role,
       },
       account: {
-        accountNumber: account.accountNumber,
-        balance: account.balance,
-        type: account.type,
+        accountNumber: result.account.accountNumber,
+        balance: result.account.balance,
+        type: result.account.type,
       },
     });
-  }  catch (error) {
-  console.error("❌ REGISTRATION ERROR FULL:", error);
-  console.error("❌ ERROR MESSAGE:", error.message);
-  console.error("❌ ERROR STACK:", error.stack);
+  } catch (error) {
+    console.error("❌ REGISTRATION ERROR:", error);
 
-  return res.status(500).json({
-    message: "Registration failed",
-    error: error.message,
-  });
+    res.status(500).json({
+      error: "Registration failed",
+      details: error.message,
+    });
   }
 });
 
-
-
-// === LOGIN ===
+/* =====================================================
+   LOGIN
+===================================================== */
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
-  console.log("HIT /auth/login with:", req.body);
+  console.log("🔐 LOGIN HIT:", email);
 
   try {
     const user = await prisma.user.findUnique({
@@ -152,7 +155,7 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
-    // ✅ ENSURE ACCOUNT EXISTS
+    // Ensure account exists
     let account = user.accounts[0] || null;
 
     if (!account) {
@@ -172,34 +175,31 @@ router.post("/login", async (req, res) => {
       { expiresIn: "1h" }
     );
 
- res.json({
-  message: "Login successful",
-  token,
-  user: {
-    id: user.id,
-    name: `${user.firstName} ${user.otherName ? user.otherName + " " : ""}${user.lastName}`,
-    email: user.email,
-    phone: user.phone,
-    role: user.role,
-
-    // 🔴 NEW (does NOT affect login)
-    suspended: user.suspended,
-    suspensionReason: user.suspensionReason,
-    suspendedAt: user.suspendedAt,
-  },
-  account: {
-    accountNumber: account.accountNumber,
-    balance: account.balance,
-    type: account.type,
-  },
-});
-
+    res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user.id,
+        name: `${user.firstName} ${
+          user.otherName ? user.otherName + " " : ""
+        }${user.lastName}`,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        suspended: user.suspended,
+        suspensionReason: user.suspensionReason,
+        suspendedAt: user.suspendedAt,
+      },
+      account: {
+        accountNumber: account.accountNumber,
+        balance: account.balance,
+        type: account.type,
+      },
+    });
   } catch (err) {
-    console.error("Login error:", err);
+    console.error("❌ LOGIN ERROR:", err);
     res.status(500).json({ error: "Server error during login" });
   }
 });
-
-
 
 export default router;

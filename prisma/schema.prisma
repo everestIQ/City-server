@@ -17,7 +17,7 @@ model User {
   phone                String
   address              String?
   dob                  DateTime
-  accountType          AccountType?    // ✅ Use the enum instead of plain String
+  accountType          String?    // ✅ Use the enum instead of plain String
   securityQuestion     String?
   securityAnswer       String?
   role                 Role            @default(CUSTOMER)

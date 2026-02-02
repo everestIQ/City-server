@@ -256,7 +256,7 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
       where: { userId: parseInt(id) },
       data: {
         suspended: suspend,
-        suspensionMessage: suspend
+        suspensionReason: suspend
           ? message || "Your account has been suspended. Please contact support."
           : null,
       },
