@@ -4,6 +4,16 @@ import prisma from "../prismaClient.js";
 
 const router = express.Router();
 
+/* 🔒 Disable caching for ALL admin routes */
+router.use((req, res, next) => {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, private",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+  next();
+});
+
 // ✅ Fetch all users (with accounts & transactions)
 router.get("/users", authenticateAdmin, async (req, res) => {
   try {
@@ -16,7 +26,13 @@ router.get("/users", authenticateAdmin, async (req, res) => {
           include: {
             account: true,
             receiver: {
-              select: { id: true, firstName: true, lastName: true, otherName: true, email: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                otherName: true,
+                email: true,
+              },
             },
           },
         },
@@ -24,7 +40,13 @@ router.get("/users", authenticateAdmin, async (req, res) => {
           include: {
             account: true,
             sender: {
-              select: { id: true, firstName: true, lastName: true, otherName: true, email: true },
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                otherName: true,
+                email: true,
+              },
             },
           },
         },
@@ -73,7 +95,6 @@ router.put("/users/:id/role", authenticateAdmin, async (req, res) => {
     res.status(500).json({ error: "Failed to update role" });
   }
 });
-1
 
 // ✅ Delete user
 router.delete("/users/:id", authenticateAdmin, async (req, res) => {
@@ -93,10 +114,22 @@ router.get("/transactions", authenticateAdmin, async (req, res) => {
     const transactions = await prisma.transaction.findMany({
       include: {
         sender: {
-          select: { id: true, firstName: true, lastName: true, otherName: true, email: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            otherName: true,
+            email: true,
+          },
         },
         receiver: {
-          select: { id: true, firstName: true, lastName: true, otherName: true, email: true },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            otherName: true,
+            email: true,
+          },
         },
         account: true,
       },
@@ -131,11 +164,20 @@ router.put("/transactions/:id", authenticateAdmin, async (req, res) => {
 // ✅ Create transaction
 router.post("/transactions", authenticateAdmin, async (req, res) => {
   try {
-    const { userId, accountId, amount, type, method, status, bankAccount, receiverId } = req.body;
+    const {
+      userId,
+      accountId,
+      amount,
+      type,
+      method,
+      status,
+      bankAccount,
+      receiverId,
+    } = req.body;
 
     const newTx = await prisma.transaction.create({
       data: {
-        senderId: parseInt(userId),
+        senderId: userId ? parseInt(userId) : null,
         receiverId: receiverId ? parseInt(receiverId) : null,
         accountId: parseInt(accountId),
         amount: parseFloat(amount),
@@ -146,28 +188,31 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
       },
     });
 
-    
+    if (status === "SUCCESS") {
+      if (type === "DEPOSIT") {
+        await prisma.account.update({
+          where: { id: parseInt(accountId) },
+          data: { balance: { increment: parseFloat(amount) } },
+        });
+      }
 
-    // Auto-update balances
-    if (type === "DEPOSIT" && status === "SUCCESS") {
-      await prisma.account.update({
-        where: { id: parseInt(accountId) },
-        data: { balance: { increment: parseFloat(amount) } },
-      });
-    } else if (type === "WITHDRAWAL" && status === "SUCCESS") {
-      await prisma.account.update({
-        where: { id: parseInt(accountId) },
-        data: { balance: { decrement: parseFloat(amount) } },
-      });
-    } else if (type === "TRANSFER" && status === "SUCCESS") {
-      await prisma.account.update({
-        where: { id: parseInt(accountId) },
-        data: { balance: { decrement: parseFloat(amount) } },
-      });
-      if (receiverId) {
+      if (type === "WITHDRAWAL") {
+        await prisma.account.update({
+          where: { id: parseInt(accountId) },
+          data: { balance: { decrement: parseFloat(amount) } },
+        });
+      }
+
+      if (type === "TRANSFER" && receiverId) {
+        await prisma.account.update({
+          where: { id: parseInt(accountId) },
+          data: { balance: { decrement: parseFloat(amount) } },
+        });
+
         const receiverAccount = await prisma.account.findFirst({
           where: { userId: parseInt(receiverId) },
         });
+
         if (receiverAccount) {
           await prisma.account.update({
             where: { id: receiverAccount.id },
@@ -184,7 +229,7 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
   }
 });
 
-/* ✅ NEW ROUTE: Admin credit (add money to account manually) */
+// ✅ Admin credit
 router.post("/credit", authenticateAdmin, async (req, res) => {
   try {
     const { accountNumber, amount } = req.body;
@@ -193,7 +238,6 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
       return res.status(400).json({ message: "Invalid input data" });
     }
 
-    // Find the target account
     const account = await prisma.account.findUnique({
       where: { accountNumber },
     });
@@ -202,13 +246,11 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
       return res.status(404).json({ message: "Account not found" });
     }
 
-    // Update account balance
     const updated = await prisma.account.update({
       where: { id: account.id },
       data: { balance: { increment: parseFloat(amount) } },
     });
 
-    // Record a credit transaction
     await prisma.transaction.create({
       data: {
         amount: parseFloat(amount),
@@ -229,29 +271,29 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
   }
 });
 
-// Add funds
-router.post("/fund", async (req, res) => {
+// ✅ Add funds (SECURED)
+router.post("/fund", authenticateAdmin, async (req, res) => {
   const { accountId, amount } = req.body;
+
   const acc = await prisma.account.update({
-    where: { id: accountId },
-    data: { balance: { increment: amount } },
+    where: { id: parseInt(accountId) },
+    data: { balance: { increment: parseFloat(amount) } },
   });
+
   res.json({ message: `✅ Funded $${amount} to account ${acc.accountNumber}` });
 });
 
-// ✅ Suspend / Reactivate USER ACCOUNTS (NOT USER ITSELF)
+// ✅ Suspend / Reactivate user accounts
 router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { suspend, message } = req.body;
 
-    // 1️⃣ Update user status (optional but fine)
-    const user = await prisma.user.update({
+    await prisma.user.update({
       where: { id: parseInt(id) },
       data: { suspended: suspend },
     });
 
-    // 2️⃣ Suspend ALL accounts belonging to user
     await prisma.account.updateMany({
       where: { userId: parseInt(id) },
       data: {
@@ -264,15 +306,13 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
 
     res.json({
       message: suspend
-        ? `🚫 User & accounts suspended`
-        : `✅ User & accounts reactivated`,
+        ? "🚫 User & accounts suspended"
+        : "✅ User & accounts reactivated",
     });
   } catch (err) {
     console.error("Error suspending account:", err);
     res.status(500).json({ error: "Failed to update suspension status" });
   }
 });
-
-
 
 export default router;
