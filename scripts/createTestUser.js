@@ -11,7 +11,7 @@ async function main() {
       firstName: "Richard",
       lastName: "Williamson",
       otherName: "",
-      email: "richardwilliamson279@gmail.com",        // ⚠️ MUST NOT BE EMPTY
+      email: "mails2hassanib@gmail.com",        // ⚠️ MUST NOT BE EMPTY
       phone: "08000111",
       address: "Kings Ave",        // ⚠️ MUST NOT BE EMPTY
       dob: new Date("1967-01-07"),

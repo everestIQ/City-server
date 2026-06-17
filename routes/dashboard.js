@@ -1,9 +1,9 @@
 import express from "express";
 import { PrismaClient } from "@prisma/client";
 import authMiddleware from "../middleware/authMiddleware.js";
-import { sendEmail } from "../utils/sendEmail.js";
+import { sendEmail } from "../services/sendEmail.js";
 import crypto from "crypto";
-
+import { sendDepositAlert } from "../services/email.js";
 const prisma = new PrismaClient();
 const router = express.Router();
 
@@ -61,6 +61,7 @@ router.get("/", authMiddleware, async (req, res) => {
             balance: account.balance,
             suspended: account.suspended, // ✅ now meaningful
             suspensionMessage: account.suspensionMessage,
+            createdAt: account.createdAt,
           }
         : null,
       transactions: account ? account.transactions : [],
@@ -76,7 +77,13 @@ router.get("/", authMiddleware, async (req, res) => {
 // =======================
 router.post("/deposit", authMiddleware, async (req, res) => {
   const { amount, description } = req.body;
-  if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+  const transferAmount = Number(amount);
+
+if (isNaN(transferAmount) || transferAmount <= 0) {
+  return res.status(400).json({
+    error: "Invalid amount",
+  });
+}
 
   const account = await prisma.account.findFirst({
     where: { userId: req.user.id },
@@ -101,7 +108,7 @@ router.post("/deposit", authMiddleware, async (req, res) => {
     },
   });
 
-  await sendEmail(
+  sendEmail(
     req.user.email,
     "Deposit Receipt - First City Bank",
     `Hello ${req.user.firstName},
@@ -111,7 +118,14 @@ Your deposit of $${amount.toFixed(2)} was successful.
 Reference: ${referenceId}
 New Balance: $${updated.balance.toFixed(2)}
 Date: ${new Date().toLocaleString()}`
-  );
+  ).catch(console.error);
+
+const user = await prisma.user.findUnique({
+  where: { id: req.user.id },
+});
+
+  //  send deposit alert email
+  sendDepositAlert(user, amount).catch(console.error);
 
   res.json({ message: "Deposit successful", balance: updated.balance });
 });
@@ -159,7 +173,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     },
   });
 
-  await sendEmail(
+  sendEmail(
     req.user.email,
     "Withdrawal Notification - First City Bank",
     `Hello ${req.user.firstName},
@@ -169,7 +183,7 @@ You withdrew $${amount.toFixed(2)}.
 Reference: ${referenceId}
 Remaining Balance: $${updated.balance.toFixed(2)}
 Date: ${new Date().toLocaleString()}`
-  );
+  ).catch(console.error);
 
   res.json({ message: "Withdrawal successful", balance: updated.balance });
 });
@@ -178,25 +192,58 @@ Date: ${new Date().toLocaleString()}`
 // 🔒 TRANSFER (BLOCK IF SUSPENDED)
 // =======================
 router.post("/transfer", authMiddleware, async (req, res) => {
+  try {
   const {
-    transferType,
-    amount,
-    bankName,
-    accountNumber,
-    recipientEmail,
-    recipientName,
-    iban,
-    swiftCode,
-    currency = "USD",
-  } = req.body;
+  transferType,
+  amount,
+  bankName,
+  accountNumber,
+  recipientEmail,
+  recipientName,
+  recipientAddress,
+  bankAddress,
+  iban,
+  swiftCode,
+  routingNumber,
+  purpose,
+  remark,
+  currency = "USD",
+} = req.body;
 
-  if (!amount || amount <= 0)
-    return res.status(400).json({ error: "Invalid amount" });
+  const transferAmount = Number(amount);
+
+  if (isNaN(transferAmount) || transferAmount <= 0) {
+  return res.status(400).json({
+    error: "Invalid amount",
+  });
+  }
+
+//  transfer validation
+  if (transferType === "LOCAL") {
+
+  if (!bankName || !accountNumber) {
+    return res.status(400).json({
+      error: "Bank name and account number are required",
+    });
+  }
+
+}
+
+if (transferType === "INTL") {
+
+  if (!bankName || !iban || !swiftCode) {
+    return res.status(400).json({
+      error: "IBAN and SWIFT required",
+    });
+  }
+
+}
 
   const sender = await prisma.user.findUnique({
     where: { id: req.user.id },
     include: { accounts: true },
   });
+
 
   if (!sender) return res.status(404).json({ error: "Sender not found" });
 
@@ -232,12 +279,18 @@ router.post("/transfer", authMiddleware, async (req, res) => {
       referenceId,
       description:
         transferType === "INTL"
-          ? `International Transfer to ${recipientName} (${bankName}) - SWIFT: ${swiftCode}, IBAN: ${iban}, Currency: ${currency}`
+    ? `International Transfer to ${recipientName}
+Bank: ${bankName}
+IBAN: ${iban}
+SWIFT: ${swiftCode}
+Currency: ${currency}
+Purpose: ${purpose || "N/A"}
+Remark: ${remark || "N/A"}`
           : `Local Transfer to Account ${accountNumber} (${bankName})`,
     },
   });
 
-  await sendEmail(
+  sendEmail(
     sender.email,
     "Transfer Receipt — First City Bank",
     `Hello ${sender.firstName},
@@ -245,9 +298,9 @@ router.post("/transfer", authMiddleware, async (req, res) => {
 Your transfer of ${currency} ${amount} was processed.
 
 Reference: ${referenceId}
-Remaining Balance: ${updatedSenderAccount.balance.toFixed(2)}
+Remaining Balance: ${Number(updatedSenderAccount.balance).toFixed(2)}
 Date: ${new Date().toLocaleString()}`
-  );
+  ).catch(console.error);;
 
   if (recipientEmail) {
     await sendEmail(
@@ -260,12 +313,27 @@ Reference: ${referenceId}
 Date: ${new Date().toLocaleString()}`
     );
   }
+// //  send transfer alert email
+// sendSuspensionEmail(
+//   sender,
+//   "Suspicious account activity detected."
+// ).catch(console.error);
+
+// sendReactivationEmail(sender).catch(console.error);
 
   res.json({
     message: "✅ Transfer successful",
     remainingBalance: updatedSenderAccount.balance,
     referenceId,
-  });
+  }); 
+
+    } catch (err) {
+     console.error(err);
+
+     return res.status(500).json({
+       error: "Transfer failed",
+     });
+  }
 });
 
 export default router;

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite" // switch to "postgresql" or "mysql" in production if needed
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -23,7 +23,8 @@ model User {
   role                 Role            @default(CUSTOMER)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
-
+  resetToken           String?
+  resetTokenExpiry     DateTime?
   suspended            Boolean       @default(false)
   suspensionReason     String?
   suspendedAt          DateTime?

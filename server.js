@@ -1,12 +1,11 @@
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
-
 import authRoutes from "./routes/auth.js";
 import dashboardRoutes from "./routes/dashboard.js";
 import transactionRoutes from "./routes/transactions.js";
 import adminRoutes from "./routes/admin.js";
-import { sendEmail } from "./utils/sendEmail.js";
+import { sendEmail } from "./services/sendEmail.js";
 
 dotenv.config();
 const app = express();
@@ -74,15 +73,22 @@ app.get("/test-email", async (req, res) => {
     "If you received this, your email system is working!"
   );
 
-  if (result.ok) {
-    res.json({ message: "Email sent successfully" });
-  } else {
-    res.status(500).json({
-      error: "Email failed",
-      details: result.error,
+  if (!result.error) {
+    return res.json({
+      success: true,
+      emailId: result.data?.id,
+      message: "Email sent successfully",
     });
   }
+
+  return res.status(500).json({
+    success: false,
+    error: result.error,
+  });
 });
+
+console.log("RESEND KEY:", process.env.RESEND_API_KEY?.slice(0, 10));
+console.log("EMAIL FROM:", process.env.EMAIL_FROM);
 
 /* =====================================================
    START SERVER
