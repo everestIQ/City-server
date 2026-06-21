@@ -1,117 +1,139 @@
 import sendEmail from "./sendEmail.js";
+import { emailLayout } from "./emailTemplates.js";
 
 export async function sendWelcomeEmail(user) {
-  return sendEmail(
-    user.email,
-    "Welcome to First City Finance",
-    `Hello ${user.firstName},
-
-Your account has been successfully created.
-
-Thank you for banking with First City Finance.
-
-Regards,
-First City Finance`
-  );
+  return sendEmail({
+    to: user.email,
+    subject: "Welcome to First City Finance",
+    text: `Welcome ${user.firstName}`,
+    html: emailLayout(
+      "Welcome to First City Finance",
+      `
+      <p>Hello <strong>${user.firstName}</strong>,</p>
+      <p>Your account has been successfully created.</p>
+      <p>Thank you for choosing First City Finance.</p>
+      `
+    ),
+  });
 }
 
 export async function sendDepositAlert(user, amount) {
-  return sendEmail(
-    user.email,
-    "Deposit Alert",
-    `Dear ${user.firstName},
+  return sendEmail({
+    to: user.email,
+    subject: "Deposit Alert",
+    text: `Deposit of $${amount}`,
+    html: emailLayout(
+      "Deposit Successful",
+      `
+      <div style="background:#e8f5e9;padding:15px;border-radius:8px;color:#2e7d32;">
+        Deposit Successfully Credited
+      </div>
 
-A deposit of $${amount} has been credited to your account.
-
-Thank you for banking with us.`
-  );
+      <p>Hello <strong>${user.firstName}</strong>,</p>
+      <p>$${Number(amount).toFixed(2)} has been credited.</p>
+      `
+    ),
+  });
 }
 
-export async function sendTransferAlert(
-  user,
-  amount,
-  beneficiary
-) {
-  return sendEmail(
-    user.email,
-    "Transfer Successful",
-    `Dear ${user.firstName},
+export async function sendTransferAlert(user, amount, beneficiary) {
+  return sendEmail({
+    to: user.email,
+    subject: "Transfer Successful",
+    text: "Transfer successful",
+    html: emailLayout(
+      "Transfer Successful",
+      `
+      <div style="background:#e3f2fd;padding:15px;border-radius:8px;color:#0d47a1;">
+        Transfer Completed
+      </div>
 
-Your transfer of $${amount} to ${beneficiary} was successful.
-
-Thank you for banking with us.`
-  );
+      <p>Hello <strong>${user.firstName}</strong>,</p>
+      <p>$${Number(amount).toFixed(2)} sent to <strong>${beneficiary}</strong></p>
+      `
+    ),
+  });
 }
 
 export async function sendLoginAlert(user) {
-  return sendEmail(
-    user.email,
-    "Login Alert",
-    `Dear ${user.firstName},
+  const displayName =
+    user.firstName || user.otherName || user.email || "Customer";
 
-A login was detected on your First City Finance account.
+  return sendEmail({
+    to: user.email,
+    subject: "Login Alert",
+    text: "Login detected",
+    html: emailLayout(
+      "Security Login Alert",
+      `
+      <p>Hello <strong>${displayName}</strong>,</p>
+      <p>A login was detected on your account.</p>
+      <p><strong>Time:</strong> ${new Date().toLocaleString()}</p>
 
-Time: ${new Date().toLocaleString()}
-
-If this was not you, please contact support immediately.
-
-First City Finance Security Team`
-  );
+      <div style="background:#fff3cd;padding:15px;border-radius:8px;color:#856404;">
+        If this was not you, contact support immediately.
+      </div>
+      `
+    ),
+  });
 }
 
 export async function sendSuspensionEmail(user, reason) {
-  return sendEmail(
-    user.email,
-    "Account Suspended",
-    `Dear ${user.firstName},
+  return sendEmail({
+    to: user.email,
+    subject: "Account Suspended",
+    text: "Account suspended",
+    html: emailLayout(
+      "Account Suspended",
+      `
+      <div style="background:#f8d7da;padding:15px;border-radius:8px;color:#842029;">
+        Your account has been suspended.
+      </div>
 
-Your First City Finance account has been suspended.
-
-Reason:
-${reason || "Please contact customer support for more information."}
-
-If you believe this is an error, please contact support immediately.
-
-Regards,
-First City Finance`
-  );
+      <p><strong>Reason:</strong> ${reason || "Contact support"}</p>
+      `
+    ),
+  });
 }
 
 export async function sendReactivationEmail(user) {
-  return sendEmail(
-    user.email,
-    "Account Reactivated",
-    `Dear ${user.firstName},
+  return sendEmail({
+    to: user.email,
+    subject: "Account Reactivated",
+    text: "Account reactivated",
+    html: emailLayout(
+      "Account Reactivated",
+      `
+      <div style="background:#d1e7dd;padding:15px;border-radius:8px;color:#0f5132;">
+        Your account has been restored.
+      </div>
 
-Your First City Finance account has been reactivated.
-
-You may now log in and continue using all banking services.
-
-Thank you for banking with us.
-
-Regards,
-First City Finance`
-  );
+      <p>You can now use all banking services.</p>
+      `
+    ),
+  });
 }
 
-export async function sendPasswordResetEmail(
-  user,
-  resetLink
-) {
-  return sendEmail(
-    user.email,
-    "Password Reset Request",
-    `Dear ${user.firstName},
+export async function sendPasswordResetEmail(user, resetLink) {
+  return sendEmail({
+    to: user.email,
+    subject: "Password Reset Request",
+    text: "Password reset requested",
+    html: emailLayout(
+      "Password Reset Request",
+      `
+      <p>Hello <strong>${user.firstName}</strong>,</p>
 
-We received a request to reset your password.
+      <p>Reset your password using the button below:</p>
 
-Use the link below to create a new password:
-
-${resetLink}
-
-If you did not request this reset, please ignore this email.
-
-Regards,
-First City Finance`
-  );
+      <p>
+        <a href="${resetLink}"
+          style="background:#0d6efd;color:#fff;padding:12px 20px;
+          text-decoration:none;border-radius:6px;display:inline-block;">
+          Reset Password
+        </a>
+      </p>
+      `
+    ),
+  });
 }

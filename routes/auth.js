@@ -70,12 +70,14 @@ router.post("/register", async (req, res) => {
 
     // Check existing user
     const existing = await prisma.user.findUnique({ where: { email } });
+    console.log("REGISTER EMAIL:", email);
+    console.log("EXISTING USER:", existing);
     if (existing) {
       return res
         .status(400)
         .json({ error: "User with this email already exists" });
     }
-
+    
     const hashedPassword = await bcrypt.hash(password, 10);
 
     /* ===============================
@@ -185,6 +187,7 @@ router.post("/login", async (req, res) => {
 // Log recipient for debugging
 console.log("LOGIN EMAIL TO:", user.email);
 
+
 // Send login alert in background
 sendLoginAlert(user).catch((err) =>
   console.error("Login alert failed:", err)
@@ -208,7 +211,7 @@ sendLoginAlert(user).catch((err) =>
         phone: user.phone,
         role: user.role,
         suspended: user.suspended,
-        suspensionReason: user.suspensionReason,
+        suspensionMessage: user.suspensionMessage,
         suspendedAt: user.suspendedAt,
       },
       account: {

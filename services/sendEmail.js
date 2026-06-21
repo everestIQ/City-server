@@ -5,34 +5,48 @@ dotenv.config();
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-console.log(
-  "RESEND_API_KEY loaded:",
-  !!process.env.RESEND_API_KEY
-);
-
-export async function sendEmail(
+/**
+ * BANK-GRADE EMAIL SENDER
+ * - Always sends HTML wrapper
+ * - Automatically converts text → HTML fallback
+ * - Prevents undefined email bodies
+ */
+export async function sendEmail({
   to,
   subject,
-  message,
-  html = null
-) {
+  text = "",
+  html = "",
+}) {
   try {
+    if (!to) {
+      throw new Error("Recipient email (to) is required");
+    }
+
+    const finalHtml =
+      html ||
+      `
+      <div style="font-family:Arial;padding:20px;line-height:1.6">
+        <h2>${subject}</h2>
+        <p>${text}</p>
+        <hr/>
+        <small>This is an automated message from First City Finance.</small>
+      </div>
+      `;
+
     const result = await resend.emails.send({
       from:
         process.env.EMAIL_FROM ||
         "First City Finance <noreply@firstcityfinance.com>",
       to,
       subject,
-      text: message,
-      ...(html && { html }),
+      text: text || subject,
+      html: finalHtml,
     });
 
-    console.log("FROM ADDRESS:", process.env.EMAIL_FROM);
-
-    console.log("✅ Email sent:", result);
+    console.log("✅ Email sent:", subject, "→", to);
     return result;
   } catch (error) {
-    console.error("❌ Resend failed:", error);
+    console.error("❌ Email failed:", error.message);
     return { error };
   }
 }

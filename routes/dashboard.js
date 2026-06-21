@@ -4,6 +4,8 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import { sendEmail } from "../services/sendEmail.js";
 import crypto from "crypto";
 import { sendDepositAlert } from "../services/email.js";
+
+
 const prisma = new PrismaClient();
 const router = express.Router();
 
@@ -93,7 +95,7 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
 
   const updated = await prisma.account.update({
     where: { id: account.id },
-    data: { balance: { increment: amount } },
+    data: { balance: { increment: transferAmount } },
   });
 
   const referenceId = generateReferenceId();
@@ -102,7 +104,7 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
     data: {
       accountId: account.id,
       type: "CREDIT",
-      amount,
+      amount: transferAmount,
       description: description || "Deposit",
       referenceId,
     },
@@ -113,7 +115,7 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
     "Deposit Receipt - First City Bank",
     `Hello ${req.user.firstName},
 
-Your deposit of $${amount.toFixed(2)} was successful.
+Your deposit of $${transferAmount.toFixed(2)} was successful.
 
 Reference: ${referenceId}
 New Balance: $${updated.balance.toFixed(2)}
@@ -123,9 +125,8 @@ Date: ${new Date().toLocaleString()}`
 const user = await prisma.user.findUnique({
   where: { id: req.user.id },
 });
-
   //  send deposit alert email
-  sendDepositAlert(user, amount).catch(console.error);
+  sendDepositAlert(user, transferAmount).catch(console.error);
 
   res.json({ message: "Deposit successful", balance: updated.balance });
 });
@@ -153,12 +154,12 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     });
   }
 
-  if (account.balance < amount)
+  if (account.balance < transferAmount)
     return res.status(400).json({ error: "Insufficient funds" });
 
   const updated = await prisma.account.update({
     where: { id: account.id },
-    data: { balance: { decrement: amount } },
+    data: { balance: { decrement: transferAmount } },
   });
 
   const referenceId = generateReferenceId();
@@ -167,7 +168,7 @@ router.post("/withdraw", authMiddleware, async (req, res) => {
     data: {
       accountId: account.id,
       type: "DEBIT",
-      amount,
+      amount: transferAmount,
       description: description || "Withdrawal",
       referenceId,
     },
@@ -261,12 +262,12 @@ if (transferType === "INTL") {
     });
   }
 
-  if (senderAccount.balance < amount)
+  if (senderAccount.balance < transferAmount)
     return res.status(400).json({ error: "Insufficient funds" });
 
   const updatedSenderAccount = await prisma.account.update({
     where: { id: senderAccount.id },
-    data: { balance: { decrement: amount } },
+    data: { balance: { decrement: transferAmount } },
   });
 
   const referenceId = generateReferenceId();
@@ -275,17 +276,11 @@ if (transferType === "INTL") {
     data: {
       accountId: senderAccount.id,
       type: "TRANSFER",
-      amount,
+      amount: transferAmount,
       referenceId,
       description:
         transferType === "INTL"
-    ? `International Transfer to ${recipientName}
-Bank: ${bankName}
-IBAN: ${iban}
-SWIFT: ${swiftCode}
-Currency: ${currency}
-Purpose: ${purpose || "N/A"}
-Remark: ${remark || "N/A"}`
+    ? `INTL_TRANSFER:${recipientName}:${bankName}:${currency}:${amount}`
           : `Local Transfer to Account ${accountNumber} (${bankName})`,
     },
   });
@@ -302,24 +297,35 @@ Remaining Balance: ${Number(updatedSenderAccount.balance).toFixed(2)}
 Date: ${new Date().toLocaleString()}`
   ).catch(console.error);;
 
-  if (recipientEmail) {
-    await sendEmail(
-      recipientEmail,
-      "You received a payment — First City Bank",
-      `Hello ${recipientName || "Customer"},
+  const isValidEmail = (email) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-You have received ${currency} ${amount}.
+if (accountNumber) {
+  const recipientAccount = await prisma.account.findUnique({
+    where: { accountNumber },
+    include: { user: true },
+  });
+
+  if (recipientAccount?.user) {
+    await sendEmail(
+      recipientAccount.user.email,
+      "You received a payment — First City Bank",
+      `Hello ${recipientAccount.user.firstName},
+
+You have received ${currency} ${transferAmount}.
 Reference: ${referenceId}
 Date: ${new Date().toLocaleString()}`
-    );
+    ).catch(console.error);
   }
-// //  send transfer alert email
-// sendSuspensionEmail(
-//   sender,
-//   "Suspicious account activity detected."
-// ).catch(console.error);
+}
 
-// sendReactivationEmail(sender).catch(console.error);
+// //  send transfer alert email
+sendSuspensionEmail(
+  sender,
+  "Suspicious account activity detected."
+).catch(console.error);
+
+sendReactivationEmail(sender).catch(console.error);
 
   res.json({
     message: "✅ Transfer successful",
