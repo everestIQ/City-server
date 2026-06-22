@@ -3,7 +3,11 @@ import { PrismaClient } from "@prisma/client";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { sendEmail } from "../services/sendEmail.js";
 import crypto from "crypto";
-import { sendDepositAlert } from "../services/email.js";
+import {
+  sendDepositAlert,
+  sendTransferAlert,
+  sendIncomingTransferAlert,
+} from "../services/email.js";
 
 
 const prisma = new PrismaClient();
@@ -26,6 +30,7 @@ router.get("/", authMiddleware, async (req, res) => {
           include: {
             transactions: {
               orderBy: { timestamp: "desc" },
+              take: 20, // fetch last 20 transactions
             },
           },
         },
@@ -110,84 +115,79 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
     },
   });
 
-  sendEmail(
-    req.user.email,
-    "Deposit Receipt - First City Bank",
-    `Hello ${req.user.firstName},
 
-Your deposit of $${transferAmount.toFixed(2)} was successful.
-
-Reference: ${referenceId}
-New Balance: $${updated.balance.toFixed(2)}
-Date: ${new Date().toLocaleString()}`
-  ).catch(console.error);
 
 const user = await prisma.user.findUnique({
   where: { id: req.user.id },
 });
   //  send deposit alert email
-  sendDepositAlert(user, transferAmount).catch(console.error);
+ sendDepositAlert(user, {
+  amount: transferAmount,
+  referenceId,
+  balance: updated.balance,
+  currency: "USD",
+}).catch(console.error);
 
   res.json({ message: "Deposit successful", balance: updated.balance });
 });
 
-// =======================
-// 🔒 WITHDRAW (BLOCK IF SUSPENDED)
-// =======================
-router.post("/withdraw", authMiddleware, async (req, res) => {
-  const { amount, description } = req.body;
-  if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
+// // =======================
+// // 🔒 WITHDRAW (BLOCK IF SUSPENDED)
+// // =======================
+// router.post("/withdraw", authMiddleware, async (req, res) => {
+//   const { amount, description } = req.body;
+//   if (amount <= 0) return res.status(400).json({ error: "Invalid amount" });
 
-  const account = await prisma.account.findFirst({
-    where: { userId: req.user.id },
-  });
+//   const account = await prisma.account.findFirst({
+//     where: { userId: req.user.id },
+//   });
 
-  if (!account) return res.status(404).json({ error: "Account not found" });
+//   if (!account) return res.status(404).json({ error: "Account not found" });
 
-  // 🔒 SUSPENSION CHECK
-  if (account.suspended) {
-    return res.status(403).json({
-      error: "Account suspended",
-      message:
-        account.suspensionMessage ||
-        "Your account is suspended. Withdrawals are disabled.",
-    });
-  }
+//   // 🔒 SUSPENSION CHECK
+//   if (account.suspended) {
+//     return res.status(403).json({
+//       error: "Account suspended",
+//       message:
+//         account.suspensionMessage ||
+//         "Your account is suspended. Withdrawals are disabled.",
+//     });
+//   }
 
-  if (account.balance < transferAmount)
-    return res.status(400).json({ error: "Insufficient funds" });
+//   if (account.balance < transferAmount)
+//     return res.status(400).json({ error: "Insufficient funds" });
 
-  const updated = await prisma.account.update({
-    where: { id: account.id },
-    data: { balance: { decrement: transferAmount } },
-  });
+//   const updated = await prisma.account.update({
+//     where: { id: account.id },
+//     data: { balance: { decrement: transferAmount } },
+//   });
 
-  const referenceId = generateReferenceId();
+//   const referenceId = generateReferenceId();
 
-  await prisma.transaction.create({
-    data: {
-      accountId: account.id,
-      type: "DEBIT",
-      amount: transferAmount,
-      description: description || "Withdrawal",
-      referenceId,
-    },
-  });
+//   await prisma.transaction.create({
+//     data: {
+//       accountId: account.id,
+//       type: "DEBIT",
+//       amount: transferAmount,
+//       description: description || "Withdrawal",
+//       referenceId,
+//     },
+//   });
 
-  sendEmail(
-    req.user.email,
-    "Withdrawal Notification - First City Bank",
-    `Hello ${req.user.firstName},
+//   sendEmail(
+//     req.user.email,
+//     "Withdrawal Notification - First City Bank",
+//     `Hello ${req.user.firstName},
 
-You withdrew $${amount.toFixed(2)}.
+// You withdrew $${amount.toFixed(2)}.
 
-Reference: ${referenceId}
-Remaining Balance: $${updated.balance.toFixed(2)}
-Date: ${new Date().toLocaleString()}`
-  ).catch(console.error);
+// Reference: ${referenceId}
+// Remaining Balance: $${updated.balance.toFixed(2)}
+// Date: ${new Date().toLocaleString()}`
+//   ).catch(console.error);
 
-  res.json({ message: "Withdrawal successful", balance: updated.balance });
-});
+//   res.json({ message: "Withdrawal successful", balance: updated.balance });
+// });
 
 // =======================
 // 🔒 TRANSFER (BLOCK IF SUSPENDED)
@@ -280,52 +280,54 @@ if (transferType === "INTL") {
       referenceId,
       description:
         transferType === "INTL"
-    ? `INTL_TRANSFER:${recipientName}:${bankName}:${currency}:${amount}`
-          : `Local Transfer to Account ${accountNumber} (${bankName})`,
+    ? `International Transfer
+
+       Recipient: ${recipientName}
+       Bank: ${bankName}
+       IBAN: ${iban}
+       SWIFT: ${swiftCode}
+       Currency: ${currency}
+       Purpose: ${purpose || "N/A"}
+       Remark: ${remark || "N/A"}`
+
+
+          : `Local Transfer
+             Beneficiary: ${recipientName || "Unknown"}
+             Bank: ${bankName}
+             Account: ${accountNumber}`,
     },
   });
 
-  sendEmail(
-    sender.email,
-    "Transfer Receipt — First City Bank",
-    `Hello ${sender.firstName},
+sendTransferAlert(sender, {
+  amount: transferAmount,
+  beneficiary: recipientName || accountNumber,
+  referenceId,
+  balance: updatedSenderAccount.balance,
+  bankName,
+  currency,
+  transferType,
 
-Your transfer of ${currency} ${amount} was processed.
-
-Reference: ${referenceId}
-Remaining Balance: ${Number(updatedSenderAccount.balance).toFixed(2)}
-Date: ${new Date().toLocaleString()}`
-  ).catch(console.error);;
-
-  const isValidEmail = (email) =>
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}).catch(console.error);
 
 if (accountNumber) {
   const recipientAccount = await prisma.account.findUnique({
     where: { accountNumber },
     include: { user: true },
   });
+  
 
-  if (recipientAccount?.user) {
-    await sendEmail(
-      recipientAccount.user.email,
-      "You received a payment — First City Bank",
-      `Hello ${recipientAccount.user.firstName},
-
-You have received ${currency} ${transferAmount}.
-Reference: ${referenceId}
-Date: ${new Date().toLocaleString()}`
-    ).catch(console.error);
-  }
+if (recipientAccount?.user) {
+  sendIncomingTransferAlert(recipientAccount.user, {
+    amount: transferAmount,
+    senderName: `${sender.firstName} ${sender.lastName}`,
+    referenceId,
+    currency,
+    bankName,
+  }).catch(console.error);
+}
 }
 
-// //  send transfer alert email
-sendSuspensionEmail(
-  sender,
-  "Suspicious account activity detected."
-).catch(console.error);
 
-sendReactivationEmail(sender).catch(console.error);
 
   res.json({
     message: "✅ Transfer successful",
