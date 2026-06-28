@@ -8,6 +8,7 @@ import prisma from "../prismaClient.js";
 
 const router = express.Router();
 
+
 /* 🔒 Disable caching for ALL admin routes */
 router.use((req, res, next) => {
   res.set({
@@ -16,6 +17,45 @@ router.use((req, res, next) => {
     Expires: "0",
   });
   next();
+});
+
+// =======================
+// TEMP DEBUG ROUTE
+// =======================
+router.get("/debug/users", async (req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      include: {
+        accounts: true,
+      },
+    });
+
+    res.json({
+      count: users.length,
+      users,
+    });
+  } catch (err) {
+    console.error("Debug users error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/debug/accounts", async (req, res) => {
+  try {
+    const accounts = await prisma.account.findMany({
+      include: {
+        user: true,
+      },
+    });
+
+    res.json({
+      count: accounts.length,
+      accounts,
+    });
+  } catch (err) {
+    console.error("Debug accounts error:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ✅ Fetch all users (with accounts & transactions)
