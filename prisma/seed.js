@@ -54,6 +54,7 @@ async function main() {
       password: hashedPassword,
       role: "ADMIN",
       phone: "+10000000000",
+      dob: new Date("1990-01-01"),
     },
   });
 
