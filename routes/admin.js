@@ -351,7 +351,10 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
 
     await prisma.user.update({
       where: { id: parseInt(id) },
-      data: { suspended: suspend },
+      data: { suspended: suspend,
+              suspensionReason: suspend ? message || "Your account has been suspended. Please contact support." : null,
+              suspendedAt: suspend ? new Date() : null,
+       },
     });
 
     await prisma.account.updateMany({
@@ -374,5 +377,29 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
     res.status(500).json({ error: "Failed to update suspension status" });
   }
 });
+
+await prisma.$transaction([
+  prisma.user.update({
+    where: { id: parseInt(id) },
+    data: {
+      suspended: suspend,
+      suspensionReason: suspend
+        ? message || "Your account has been suspended. Please contact support."
+        : null,
+      suspendedAt: suspend ? new Date() : null,
+    },
+  }),
+
+  prisma.account.updateMany({
+    where: { userId: parseInt(id) },
+    data: {
+      suspended: suspend,
+      suspensionMessage: suspend
+        ? message || "Your account has been suspended. Please contact support."
+        : "Your account has been reactivated.",
+      suspendedAt: suspend ? new Date() : null,
+    },
+  }),
+]);
 
 export default router;
