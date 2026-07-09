@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
 import {
@@ -71,8 +70,8 @@ async function main() {
     data: {
       userId: admin.id,
       accountNumber: generateAccountNumber(),
-      type: "SAVINGS", 
-      currency: "USD",
+      type: AccountType.SAVINGS,
+      currency: Currency.USD,
       balance: 0,
       suspended: false,
       
