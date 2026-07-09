@@ -40,20 +40,40 @@ router.post("/register", async (req, res) => {
       securityQuestion,
       securityAnswer,
       password,
+      emailVerified,
     } = req.body;
-
+  
+    
     // Normalize
-    otherName = otherName || null;
-    address = address || null;
-    securityQuestion =
+      otherName = otherName || null;
+      securityQuestion =
       securityQuestion || "What is your favorite color?";
-    securityAnswer = securityAnswer || "blue";
-
+      securityAnswer =
+        (securityAnswer || "").trim().toLowerCase() || "blue";
+      accountType = accountType?.trim().toUpperCase();
+      
     // Validation
     if (!firstName || !lastName || !email || !phone || !password) {
       return res.status(400).json({
         error: "firstName, lastName, email, phone and password are required",
       });
+    }
+   
+    if (password.length < 8) {
+    return res.status(400).json({
+        error: "Password must be at least 8 characters."
+    });
+  
+   }
+
+   const strongPassword =
+   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?#&]).{8,}$/;
+
+   if (!strongPassword.test(password)) {
+      return res.status(400).json({
+          error:
+         "Password must contain uppercase, lowercase, number and special character."
+    });
     }
 
     const parsedDob = new Date(dob);
@@ -61,12 +81,38 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({ error: "Invalid date of birth" });
     }
 
-    const validTypes = ["SAVINGS", "CURRENT", "BUSINESS"];
-    if (!validTypes.includes(accountType)) {
-      return res.status(400).json({
-        error: `Invalid account type. Must be one of ${validTypes.join(", ")}`,
+      if (parsedDob > new Date()) {
+        return res.status(400).json({
+           error:"Invalid date of birth."
+        });
+      }
+
+
+    const ACCOUNT_TYPES = [
+      "SAVINGS",
+      "CURRENT",
+      "BUSINESS",
+      "CHECKING",
+    ];
+
+     if (!ACCOUNT_TYPES.includes(accountType)) {
+       return res.status(400).json({
+       error: `Invalid account type. Must be one of ${ACCOUNT_TYPES.join(", ")}`,
       });
-    }
+     }
+     //  normalize email
+     email = email.trim().toLowerCase();
+
+    //  normalize names
+     firstName = firstName.trim();
+     lastName = lastName.trim();
+     otherName = otherName?.trim() || null;
+     
+    //  normalize phone
+    phone = phone.trim();
+
+    //  normalize address
+    address = address?.trim() || null;
 
     // Check existing user
     const existing = await prisma.user.findUnique({ where: { email } });
@@ -77,7 +123,14 @@ router.post("/register", async (req, res) => {
         .status(400)
         .json({ error: "User with this email already exists" });
     }
+
+    //  trim and normalize security question and answer
+    securityQuestion = securityQuestion?.trim() || "What is your favorite color?";
+    securityAnswer = securityAnswer?.trim().toLowerCase() || "blue";
     
+     //  trim and normalize password
+     password = password.trim();
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     /* ===============================
@@ -97,31 +150,46 @@ router.post("/register", async (req, res) => {
           securityQuestion,
           securityAnswer,
           role: "CUSTOMER",
+          emailVerified: false,
           accountType, // ✅ store on user
         },
       });
 
-      const account = await tx.account.create({
-        data: {
-          accountNumber: generateAccountNumber(),
-          userId: user.id,
-          balance: 0,
-          type: accountType,
-        },
+       let accountNumber;
+       let exists = true;
+
+       while (exists) {
+           accountNumber = generateAccountNumber();
+
+           exists = await tx.account.findUnique({
+              where: { accountNumber }
+            
+            });
+          }
+
+         const account = await tx.account.create({
+               data:{
+                    userId:user.id,
+                    type:accountType,
+                    accountNumber,
+                    balance:0,
+                    ledgerBalance:0,
+                    currency:"USD",
+               },
+            });
+
+        return { user, account };
       });
 
-      return { user, account };
-    });
+       console.log("✅ USER + ACCOUNT CREATED:", result.user.id);
 
-    console.log("✅ USER + ACCOUNT CREATED:", result.user.id);
-
-// Send welcome email in background
-sendWelcomeEmail(result.user).catch((err) =>
-  console.error("Welcome email failed:", err)
-);
+      // Send welcome email in background
+        sendWelcomeEmail(result.user).catch((err) =>
+         console.error("Welcome email failed:", err)
+      );
 
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "User registered successfully",
       user: {
         id: result.user.id,
@@ -132,14 +200,27 @@ sendWelcomeEmail(result.user).catch((err) =>
         phone: result.user.phone,
         role: result.user.role,
       },
+
       account: {
         accountNumber: result.account.accountNumber,
         balance: result.account.balance,
         type: result.account.type,
+        ledgerBalance: result.account.ledgerBalance,
+        currency: result.account.currency,
+        createdAt : result.account.createdAt,
       },
     });
   } catch (error) {
     console.error("❌ REGISTRATION ERROR:", error);
+    console.error("Registration failed");
+    console.error(error.message);
+    console.error(error.stack);
+
+        if (error.code === "P2002") {
+        return res.status(400).json({
+            error: "Email already exists.",
+        });
+    }
 
     res.status(500).json({
       error: "Registration failed",
@@ -152,10 +233,14 @@ sendWelcomeEmail(result.user).catch((err) =>
    LOGIN
 ===================================================== */
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
+  let { email, password } = req.body;
+
+  email = email.trim().toLowerCase();
+  password = password.trim();
+
   console.log("🔐 LOGIN HIT:", email);
 
-  try {
+  try { 
     const user = await prisma.user.findUnique({
       where: { email },
       include: { accounts: true },
@@ -170,6 +255,20 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
 
+    // // Check if email is verified 
+    // if (!user.emailVerified) {
+    // return res.status(403).json({
+    //     error: "Verify your email first."
+    // });
+    // }
+    
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        lastLogin: new Date(),
+    },
+   });
+
     // Ensure account exists
     let account = user.accounts[0] || null;
 
@@ -179,7 +278,10 @@ router.post("/login", async (req, res) => {
           accountNumber: generateAccountNumber(),
           userId: user.id,
           balance: 0,
+          ledgerBalance: 0,
           type: user.accountType || "SAVINGS",
+          currency: "USD",
+
         },
       });
     }
@@ -199,7 +301,7 @@ sendLoginAlert(user).catch((err) =>
       { expiresIn: "1h" }
     );
 
-    res.json({
+    return res.json({
       message: "Login successful",
       token,
       user: {
@@ -210,14 +312,23 @@ sendLoginAlert(user).catch((err) =>
         email: user.email,
         phone: user.phone,
         role: user.role,
+        emailVerified: user.emailVerified,
+        accountType: user.accountType,
+        lastLogin: user.lastLogin,
         suspended: user.suspended,
-        suspensionMessage: user.suspensionMessage,
+        suspensionReason: user.suspensionReason,
         suspendedAt: user.suspendedAt,
+        
       },
       account: {
         accountNumber: account.accountNumber,
         balance: account.balance,
+        ledgerBalance: account.ledgerBalance,
         type: account.type,
+        currency: account.currency,
+        suspended: account.suspended,
+        suspensionMessage: account.suspensionMessage,
+        updatedAt: new Date(account.updatedAt).toISOString(),
       },
     });
   } catch (err) {

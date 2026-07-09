@@ -4,7 +4,7 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import { sendEmail } from "../services/sendEmail.js";
 import crypto from "crypto";
 import {
-  sendDepositAlert,
+  sendCreditAlert,
   sendTransferAlert,
   sendIncomingTransferAlert,
 } from "../services/email.js";
@@ -80,9 +80,9 @@ router.get("/", authMiddleware, async (req, res) => {
 });
 
 // =======================
-// ✅ DEPOSIT (ALLOWED EVEN IF SUSPENDED)
+// ✅ CREDIT (ALLOWED EVEN IF SUSPENDED)
 // =======================
-router.post("/deposit", authMiddleware, async (req, res) => {
+router.post("/credit", authMiddleware, async (req, res) => {
   const { amount, description } = req.body;
   const transferAmount = Number(amount);
 
@@ -110,8 +110,9 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
       accountId: account.id,
       type: "CREDIT",
       amount: transferAmount,
-      description: description || "Deposit",
+      description: description || "Credit",
       referenceId,
+      status: "SUCCESS",
     },
   });
 
@@ -120,15 +121,15 @@ if (isNaN(transferAmount) || transferAmount <= 0) {
 const user = await prisma.user.findUnique({
   where: { id: req.user.id },
 });
-  //  send deposit alert email
- sendDepositAlert(user, {
+  //  send credit alert email
+ sendCreditAlert(user, {
   amount: transferAmount,
   referenceId,
   balance: updated.balance,
   currency: "USD",
 }).catch(console.error);
 
-  res.json({ message: "Deposit successful", balance: updated.balance });
+  res.json({ message: "Credit successful", balance: updated.balance });
 });
 
 // // =======================
@@ -197,7 +198,7 @@ router.post("/transfer", authMiddleware, async (req, res) => {
   const {
   transferType,
   amount,
-  bankName,
+  recipientBank,
   accountNumber,
   recipientEmail,
   recipientName,
@@ -277,13 +278,14 @@ if (transferType === "INTL") {
       accountId: senderAccount.id,
       type: "TRANSFER",
       amount: transferAmount,
+      status: "SUCCESS",
       referenceId,
       description:
         transferType === "INTL"
     ? `International Transfer
 
        Recipient: ${recipientName}
-       Bank: ${bankName}
+       Bank: ${recipientBank}
        IBAN: ${iban}
        SWIFT: ${swiftCode}
        Currency: ${currency}
@@ -293,7 +295,7 @@ if (transferType === "INTL") {
 
           : `Local Transfer
              Beneficiary: ${recipientName || "Unknown"}
-             Bank: ${bankName}
+             Bank: ${recipientBank}
              Account: ${accountNumber}`,
     },
   });
@@ -303,7 +305,7 @@ sendTransferAlert(sender, {
   beneficiary: recipientName || accountNumber,
   referenceId,
   balance: updatedSenderAccount.balance,
-  bankName,
+  recipientBank: recipientBank || bankName,
   currency,
   transferType,
 
@@ -322,7 +324,7 @@ if (recipientAccount?.user) {
     senderName: `${sender.firstName} ${sender.lastName}`,
     referenceId,
     currency,
-    bankName,
+    recipientBank: recipientBank || bankName,
   }).catch(console.error);
 }
 }

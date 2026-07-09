@@ -64,6 +64,8 @@ async function main() {
       accountNumber: generateAccountNumber(),
       balance: 0,
       suspended: false,
+      type: "SAVINGS", 
+      currency: "USD",
     },
   });
 

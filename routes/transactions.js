@@ -28,9 +28,9 @@ async function checkAccountSuspension(accountId, userId) {
 }
 
 // =====================
-// Deposit (ALLOWED even if suspended)
+// Credit (ALLOWED even if suspended)
 // =====================
-router.post("/:accountId/deposit", authenticateToken, async (req, res) => {
+router.post("/:accountId/credit", authenticateToken, async (req, res) => {
   try {
     const { accountId } = req.params;
     const { amount } = req.body;
@@ -53,10 +53,11 @@ router.post("/:accountId/deposit", authenticateToken, async (req, res) => {
         type: "CREDIT",
         accountId: account.id,
         referenceId: generateRef(),
+        status: "SUCCESS",
       },
     });
 
-    res.json({ message: "Deposit successful", account: updatedAccount });
+    res.json({ message: "Credit successful", account: updatedAccount });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Something went wrong" });
@@ -66,7 +67,7 @@ router.post("/:accountId/deposit", authenticateToken, async (req, res) => {
 // =====================
 // Withdraw (BLOCK IF ACCOUNT SUSPENDED)
 // =====================
-router.post("/:accountId/withdraw", authenticateToken, async (req, res) => {
+router.post("/:accountId/DEBIT", authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
     const { accountId } = req.params;

@@ -39,7 +39,7 @@ export async function sendWelcomeEmail(user) {
   });
 }
 
-export async function sendDepositAlert(user, {
+export async function sendCreditAlert(user, {
   amount,
   referenceId,
   balance,
@@ -47,15 +47,15 @@ export async function sendDepositAlert(user, {
 }) {
   return sendEmail({
     to: user.email,
-    subject: "Deposit Alert",
-    text: `Deposit of $${amount}`,
+    subject: "Credit Alert",
+    text: `Credit of $${amount}`,
     html: emailLayout(
-  "Deposit Confirmation",
+  "Credit Confirmation",
   `
   <p>Hello <strong>${user.firstName}</strong>,</p>
 
   <p>
-    A deposit has been successfully credited to your account.
+    A credit has been successfully added to your account.
   </p>
 
   <div style="

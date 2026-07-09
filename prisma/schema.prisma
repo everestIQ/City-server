@@ -17,17 +17,20 @@ model User {
   phone                String
   address              String?
   dob                  DateTime
-  accountType          String?    // ✅ Use the enum instead of plain String
+  accountType          AccountType?
   securityQuestion     String?
   securityAnswer       String?
   role                 Role            @default(CUSTOMER)
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
+  lastLogin            DateTime?
   resetToken           String?
   resetTokenExpiry     DateTime?
-  suspended            Boolean       @default(false)
+  suspended            Boolean         @default(false)
   suspensionReason     String?
   suspendedAt          DateTime?
+  emailVerified        Boolean         @default(false)               @@index([email])
+
 
   // ✅ Relations
   accounts             Account[]
@@ -38,35 +41,50 @@ model User {
 model Account {
   id            Int            @id @default(autoincrement())
   type          AccountType
-  accountNumber String         @unique
+  accountNumber String         @unique                                      @@index([accountNumber])
   balance       Float          @default(0)
+  ledgerBalance Float          @default(0)
   createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   user          User           @relation(fields: [userId], references: [id])
   userId        Int
 
   transactions  Transaction[]
+  currency      Currency         @default(USD)
   suspended     Boolean        @default(false)
+  suspendedAt   DateTime?
   suspensionMessage String?
+ 
 }
 
 model Transaction {
-  id          Int              @id @default(autoincrement())
-  amount      Float
-  type        TransactionType
-  timestamp   DateTime         @default(now())
-  description String?
-
-  account     Account          @relation(fields: [accountId], references: [id])
-  accountId   Int
+  id                  Int               @id @default(autoincrement())
+  amount              Float
+  type                TransactionType
+  status              TransactionStatus @default(SUCCESS)
+  timestamp           DateTime          @default(now())
+  description         String?
+  recipientBank       String?
+  beneficiaryName     String?
+  beneficiaryAccount  String?
+  swiftCode           String?
+  iban                String?
+  remark              String?
+  purpose             String?
+  method              String?
+  account             Account           @relation(fields: [accountId], references: [id])
+  accountId           Int
   
-  referenceId  String   @unique   // 👈 CHANGE: add ?
-  createdAt    DateTime @default(now())
+  referenceId         String            @unique @default(cuid())    @@index([referenceId])
+  createdAt           DateTime          @default(now())             @@index([createdAt])
 
-  sender      User?            @relation("SentTransactions", fields: [senderId], references: [id])
-  senderId    Int?
-  receiver    User?            @relation("ReceivedTransactions", fields: [receiverId], references: [id])
-  receiverId  Int?
+  sender              User?             @relation("SentTransactions", fields: [senderId], references: [id])
+  senderId            Int?
+  receiver            User?             @relation("ReceivedTransactions", fields: [receiverId], references: [id])
+  receiverId          Int?             
+  
+  
 }
 
 
@@ -86,4 +104,22 @@ enum TransactionType {
   CREDIT
   DEBIT
   TRANSFER
+  ADMIN_CREDIT
+  ADMIN_DEBIT
+  INTEREST
+  CHARGEBACK
+  REVERSAL
+}
+
+enum TransactionStatus {
+    PENDING
+    SUCCESS
+    FAILED
+    CANCELLED
+}
+
+enum Currency {
+    USD
+    EUR
+    GBP
 }

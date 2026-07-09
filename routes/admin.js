@@ -19,26 +19,26 @@ router.use((req, res, next) => {
   next();
 });
 
-// =======================
-// TEMP DEBUG ROUTE
-// =======================
-router.get("/debug/users", async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      include: {
-        accounts: true,
-      },
-    });
+// // =======================
+// // TEMP DEBUG ROUTE
+// // =======================
+// router.get("/debug/users", async (req, res) => {
+//   try {
+//     const users = await prisma.user.findMany({
+//       include: {
+//         accounts: true,
+//       },
+//     });
 
-    res.json({
-      count: users.length,
-      users,
-    });
-  } catch (err) {
-    console.error("Debug users error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
+//     res.json({
+//       count: users.length,
+//       users,
+//     });
+//   } catch (err) {
+//     console.error("Debug users error:", err);
+//     res.status(500).json({ error: err.message });
+//   }
+// });
 
 router.get("/debug/accounts", async (req, res) => {
   try {
@@ -214,9 +214,16 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
       amount,
       type,
       method,
+      recipientBank,
+      beneficiaryName,
+      beneficiaryAccount,
+      swiftCode,
+      iban,
+      remark,
+      purpose,
       status,
-      bankAccount,
       receiverId,
+
     } = req.body;
 
     const newTx = await prisma.transaction.create({
@@ -228,29 +235,36 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
         type,
         method,
         status,
-        bankAccount,
+        recipientBank: recipientBank || null,
+        beneficiaryName: beneficiaryName || null,
+        beneficiaryAccount: beneficiaryAccount || null,
+        swiftCode: swiftCode || null,
+        iban: iban || null,
+        remark: remark || null,
+        purpose: purpose || null,
       },
     });
 
     if (status === "SUCCESS") {
-      if (type === "DEPOSIT") {
+      if (type === "CREDIT") {
         await prisma.account.update({
           where: { id: parseInt(accountId) },
-          data: { balance: { increment: parseFloat(amount) } },
+          data: { balance: { increment: parseFloat(amount) }, ledgerBalance: { increment: parseFloat(amount) } },
+                
         });
       }
 
-      if (type === "WITHDRAWAL") {
+      if (type === "DEBIT") {
         await prisma.account.update({
           where: { id: parseInt(accountId) },
-          data: { balance: { decrement: parseFloat(amount) } },
+          data: { balance: { decrement: parseFloat(amount) }, ledgerBalance: { decrement: parseFloat(amount) } },
         });
       }
 
       if (type === "TRANSFER" && receiverId) {
         await prisma.account.update({
           where: { id: parseInt(accountId) },
-          data: { balance: { decrement: parseFloat(amount) } },
+          data: { balance: { decrement: parseFloat(amount) }, ledgerBalance: { decrement: parseFloat(amount) } },
         });
 
         const receiverAccount = await prisma.account.findFirst({
@@ -260,7 +274,7 @@ router.post("/transactions", authenticateAdmin, async (req, res) => {
         if (receiverAccount) {
           await prisma.account.update({
             where: { id: receiverAccount.id },
-            data: { balance: { increment: parseFloat(amount) } },
+            data: { balance: { increment: parseFloat(amount) }, ledgerBalance: { increment: parseFloat(amount) } },
           });
         }
       }
@@ -292,7 +306,7 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
 
     const updated = await prisma.account.update({
       where: { id: account.id },
-      data: { balance: { increment: parseFloat(amount) } },
+      data: { balance: { increment: parseFloat(amount) }, ledgerBalance: { increment: parseFloat(amount) } },
     });
 
     await prisma.transaction.create({
@@ -305,6 +319,8 @@ router.post("/credit", authenticateAdmin, async (req, res) => {
         receiverId: account.userId,
         method: "ADMIN_PANEL",
         bankAccount: accountNumber,
+        referenceId: `ADMIN-${Date.now()}`,
+
       },
     });
 
@@ -321,7 +337,7 @@ router.post("/fund", authenticateAdmin, async (req, res) => {
 
   const acc = await prisma.account.update({
     where: { id: parseInt(accountId) },
-    data: { balance: { increment: parseFloat(amount) } },
+    data: { balance: { increment: parseFloat(amount) }, ledgerBalance: { increment: parseFloat(amount) } },
   });
 
   res.json({ message: `✅ Funded $${amount} to account ${acc.accountNumber}` });
@@ -342,7 +358,7 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
       where: { userId: parseInt(id) },
       data: {
         suspended: suspend,
-        suspensionReason: suspend
+        suspensionMessage: suspend
           ? message || "Your account has been suspended. Please contact support."
           : null,
       },
