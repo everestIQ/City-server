@@ -1,6 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 
+import {
+  PrismaClient,
+  AccountType,
+  Currency,
+  Role,
+} from "@prisma/client";
+
 const prisma = new PrismaClient();
 
 function generateAccountNumber() {
@@ -52,9 +59,11 @@ async function main() {
       otherName: "",
       email: adminEmail,
       password: hashedPassword,
-      role: "ADMIN",
+      role: Role.ADMIN,
       phone: "+10000000000",
       dob: new Date("1990-01-01"),
+      type: AccountType.SAVINGS,
+      currency: Currency.USD,
     },
   });
 
@@ -62,10 +71,11 @@ async function main() {
     data: {
       userId: admin.id,
       accountNumber: generateAccountNumber(),
-      balance: 0,
-      suspended: false,
       type: "SAVINGS", 
       currency: "USD",
+      balance: 0,
+      suspended: false,
+      
     },
   });
 
