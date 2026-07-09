@@ -349,24 +349,29 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
     const { id } = req.params;
     const { suspend, message } = req.body;
 
-    await prisma.user.update({
+    await prisma.$transaction([
+    prisma.user.update({
       where: { id: parseInt(id) },
-      data: { suspended: suspend,
-              suspensionReason: suspend ? message || "Your account has been suspended. Please contact support." : null,
-              suspendedAt: suspend ? new Date() : null,
-       },
-    });
+      data: {
+        suspended: suspend,
+        suspensionReason: suspend
+         ? message || "Your account has been suspended. Please contact support."
+         : null,
+      suspendedAt: suspend ? new Date() : null,
+    },
+  }),
 
-    await prisma.account.updateMany({
+    prisma.account.updateMany({
       where: { userId: parseInt(id) },
       data: {
         suspended: suspend,
         suspensionMessage: suspend
           ? message || "Your account has been suspended. Please contact support."
-          : null,
-      },
-    });
-
+          : "Your account has been reactivated.",
+       suspendedAt: suspend ? new Date() : null,
+     },
+   }),
+  ]);
     res.json({
       message: suspend
         ? "🚫 User & accounts suspended"
@@ -376,30 +381,8 @@ router.patch("/users/:id/suspend", authenticateAdmin, async (req, res) => {
     console.error("Error suspending account:", err);
     res.status(500).json({ error: "Failed to update suspension status" });
   }
+  
 });
 
-await prisma.$transaction([
-  prisma.user.update({
-    where: { id: parseInt(id) },
-    data: {
-      suspended: suspend,
-      suspensionReason: suspend
-        ? message || "Your account has been suspended. Please contact support."
-        : null,
-      suspendedAt: suspend ? new Date() : null,
-    },
-  }),
-
-  prisma.account.updateMany({
-    where: { userId: parseInt(id) },
-    data: {
-      suspended: suspend,
-      suspensionMessage: suspend
-        ? message || "Your account has been suspended. Please contact support."
-        : "Your account has been reactivated.",
-      suspendedAt: suspend ? new Date() : null,
-    },
-  }),
-]);
 
 export default router;
