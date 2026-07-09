@@ -29,7 +29,8 @@ model User {
   suspended            Boolean         @default(false)
   suspensionReason     String?
   suspendedAt          DateTime?
-  emailVerified        Boolean         @default(false)               @@index([email])
+  emailVerified        Boolean         @default(false)              
+  @@index([email])
 
 
   // ✅ Relations
@@ -41,7 +42,8 @@ model User {
 model Account {
   id            Int            @id @default(autoincrement())
   type          AccountType
-  accountNumber String         @unique                                      @@index([accountNumber])
+  accountNumber String         @unique                                      
+  @@index([accountNumber])
   balance       Float          @default(0)
   ledgerBalance Float          @default(0)
   createdAt     DateTime       @default(now())
@@ -76,8 +78,10 @@ model Transaction {
   account             Account           @relation(fields: [accountId], references: [id])
   accountId           Int
   
-  referenceId         String            @unique @default(cuid())    @@index([referenceId])
-  createdAt           DateTime          @default(now())             @@index([createdAt])
+  referenceId         String            @unique @default(cuid())    
+  @@index([referenceId])
+  createdAt           DateTime          @default(now())             
+  @@index([createdAt])
 
   sender              User?             @relation("SentTransactions", fields: [senderId], references: [id])
   senderId            Int?
